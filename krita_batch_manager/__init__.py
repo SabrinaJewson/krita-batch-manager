@@ -1,4 +1,5 @@
 from krita import Krita
+from PyQt5.QtWidgets import *
 import importlib
 import krita
 import os
@@ -7,27 +8,41 @@ import sys
 from . import widget
 
 class DockWidget(krita.DockWidget):
-	w: widget.Widget
+	w: widget.Widget | None
+	kr: Krita
 
 	def __init__(self) -> None:
 		super().__init__()
 		if (kr := Krita.instance()) is None: return
-		self.setWindowTitle("Batch Manager")
+		self.kr = kr
 
-		reload = None
+		self.setWindowTitle("Batch Manager")
+		self.w = widget.Widget(self.kr)
+
 		if os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_mode")):
-			reload = lambda: self.reload(kr)
-		self.w = widget.Widget(kr, reload)
-		self.setWidget(self.w)
+			container = QWidget()
+			layout = QVBoxLayout(container)
+
+			reload_btn = QPushButton("Reload")
+			reload_btn.clicked.connect(lambda: self.reload(layout))
+			layout.addWidget(reload_btn)
+
+			layout.addWidget(self.w)
+
+			self.setWidget(container)
+		else:
+			self.setWidget(self.w)
 
 	def canvasChanged(self, canvas: krita.Canvas | None) -> None:
-		self.w.canvas_changed(canvas)
+		if self.w is not None: self.w.canvas_changed(canvas)
 
-	def reload(self, kr: Krita) -> None:
+	def reload(self, layout: QVBoxLayout) -> None:
 		for m in list(m for n, m in sys.modules.items() if n.startswith(f"{__name__}.")):
 			importlib.reload(m)
-		self.w = widget.Widget(kr, lambda: self.reload(kr))
-		self.setWidget(self.w)
+		if self.w is not None: self.w.setParent(None) # type: ignore[call-overload]
+		self.w = None
+		self.w = widget.Widget(self.kr)
+		layout.addWidget(self.w)
 
 if (kr := Krita.instance()) is not None:
 	pos = krita.DockWidgetFactoryBase.DockPosition.DockRight

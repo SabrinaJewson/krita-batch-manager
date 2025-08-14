@@ -68,7 +68,7 @@ class Widget(QWidget):
 
 	tasks = async_hack.TaskSet()
 
-	def __init__(self, kr: Krita, reload: Callable[[], None] | None) -> None:
+	def __init__(self, kr: Krita) -> None:
 		super().__init__()
 		self.kr = kr
 
@@ -130,11 +130,6 @@ class Widget(QWidget):
 
 		export_layout.addLayout(export_btns_layout, 2)
 		layout.addLayout(export_layout)
-
-		if reload is not None:
-			reload_btn = QPushButton("Reload")
-			reload_btn.clicked.connect(lambda: reload())
-			layout.addWidget(reload_btn)
 
 		self.refresh()
 		self.update_export_state()
