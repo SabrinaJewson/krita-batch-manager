@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from krita import Krita
 from pathlib import Path
-from typing import Callable, cast, Any, Tuple, List
+from typing import Callable, cast, Any, Tuple
 import asyncio
 import enum
 import json
@@ -60,6 +60,7 @@ class Widget(QWidget):
 	prev_btn: QPushButton
 	next_btn: QPushButton
 	import_btn: QPushButton
+	distribute_btn: QPushButton
 
 	export_path_edit: QLineEdit
 	export_btn: QPushButton
@@ -78,20 +79,24 @@ class Widget(QWidget):
 		self.prev_btn = QPushButton("←")
 		self.next_btn = QPushButton("→")
 		self.import_btn = QPushButton("+")
+		self.distribute_btn = QPushButton()
+		self.distribute_btn.setIcon(self.kr.icon("merge-layer-below"))
 		refresh_btn = QPushButton("⟳")
 		select_btn = QPushButton()
 		select_btn.setIcon(self.kr.icon("folder"))
 		self.prev_btn.clicked.connect(lambda: self.go(-1))
 		self.next_btn.clicked.connect(lambda: self.go(1))
 		self.import_btn.clicked.connect(self.import_images)
+		self.distribute_btn.clicked.connect(lambda: self.distribute(self.listed_files()))
 		refresh_btn.clicked.connect(self.refresh)
 		select_btn.clicked.connect(self.select_dir)
 		self.prev_btn.setToolTip("Go to previous file")
 		self.next_btn.setToolTip("Go to next file")
 		self.import_btn.setToolTip("Import files as .kra files")
+		self.distribute_btn.setToolTip("Distribute current layer to all files")
 		refresh_btn.setToolTip("Refresh file list")
 		select_btn.setToolTip("Select folder")
-		for btn in [self.prev_btn, self.next_btn, self.import_btn, refresh_btn, select_btn]:
+		for btn in [self.prev_btn, self.next_btn, self.import_btn, self.distribute_btn, refresh_btn, select_btn]:
 			btn.setStyleSheet("margin:0px;padding:0px");
 			nav_layout.addWidget(btn)
 		layout.addLayout(nav_layout)
@@ -117,7 +122,7 @@ class Widget(QWidget):
 		export_layout.addWidget(browse_btn, 1)
 
 		self.export_btn = QPushButton()
-		self.export_btn.clicked.connect(self.export_listed_files)
+		self.export_btn.clicked.connect(lambda: self.export_files(self.listed_files()))
 
 		self.export_settings_btn = QToolButton()
 		self.export_settings_btn.setIcon(self.kr.icon("configure"))
@@ -162,6 +167,7 @@ class Widget(QWidget):
 		export_settings = self.load_export_settings()
 		self.export_path_edit.setText(export_settings.export_path)
 		self.import_btn.setEnabled(current_dir is not None)
+		self.distribute_btn.setEnabled(current_dir is not None)
 
 	def update_file_list(self) -> None:
 		self.file_list.clear()
@@ -226,6 +232,7 @@ class Widget(QWidget):
 		delete_action = menu.addAction("Delete")
 		rename_action = menu.addAction("Rename")
 		export_action = menu.addAction("Export")
+		distribute_action = menu.addAction("Copy current layer to file(s)")
 		export_action.setEnabled(bool(self.export_path_edit.text().strip()))
 
 		action = menu.exec_(self.file_list.mapToGlobal(position))
@@ -233,23 +240,23 @@ class Widget(QWidget):
 		elif action == delete_action: self.delete_file(file_paths)
 		elif action == rename_action: self.rename_file(file_paths[0])
 		elif action == export_action: self.export_files(file_paths, force=True)
+		elif action == distribute_action: self.distribute(file_paths)
 
 	def open_file(self, item: QListWidgetItem) -> None:
 		if (win := self.kr.activeWindow()) is None: qWarning("no active window"); return
-
 		target_path = str(item.data(Qt.UserRole))
-
-		doc = None
-		try:
-			doc = next(d for d in self.kr.documents() if d.fileName() == target_path)
-		except StopIteration:
-			doc = self.kr.openDocument(target_path)
-
+		doc, _ = self.open_or_reuse(target_path)
 		try:
 			v = next(v for v in win.views() if v.document() == doc)
 			v.setVisible()
 		except StopIteration:
 			win.addView(doc)
+
+	def open_or_reuse(self, path: str) -> Tuple[krita.Document | None, bool]:
+		try:
+			return (next(d for d in self.kr.documents() if d.fileName() == path), False)
+		except StopIteration:
+			return (self.kr.openDocument(path), True)
 
 	def go(self, offset: int) -> None:
 		if self.active_file is None: return
@@ -319,23 +326,48 @@ class Widget(QWidget):
 
 		self.floating_message("dialog-ok", f"successfully imported {imported} files")
 
+	def distribute(self, files: list[Path]) -> None:
+		if (src_doc := self.kr.activeDocument()) is None: return
+		if (src_node := src_doc.activeNode()) is None: return
+
+		for file in files:
+			if src_doc.fileName() == str(file): continue
+
+			doc, opened_new = self.open_or_reuse(str(file))
+			if doc is None:
+				self.floating_message("dialog-warning", f"failed to open {file}")
+				break
+
+			try:
+				doc.setBatchmode(True)
+				if (root_node := doc.rootNode()) is None: continue
+				root_node.addChildNode(src_node.clone(), None)
+				if opened_new and not doc.save():
+					self.floating_message("dialog-warning", f"failed to save {file}")
+					break
+			finally:
+				if opened_new:
+					doc.close()
+				else:
+					doc.setBatchmode(False)
+
 	def choose_export_path(self):
 		path = QFileDialog.getExistingDirectory(self, "Select Export Directory")
 		if path: self.export_path_edit.setText(path)
 		# self.update_export_state() will be called automatically
 
-	def export_listed_files(self) -> None:
+	def listed_files(self) -> list[Path]:
 		files = []
 		for i in range(self.file_list.count()):
 			item = self.file_list.item(i)
 			assert item is not None
 			files.append(item.data(Qt.UserRole))
-		self.export_files(files)
+		return files
 
-	def export_files(self, src_paths: List[Path], force: bool = False) -> None:
+	def export_files(self, src_paths: list[Path], force: bool = False) -> None:
 		self.tasks.spawn(self.export_files_inner(src_paths, force))
 
-	async def export_files_inner(self, src_paths: List[Path], force: bool = False) -> None:
+	async def export_files_inner(self, src_paths: list[Path], force: bool = False) -> None:
 		settings = self.load_export_settings()
 		ext, export_config = settings.export_opts()
 
@@ -432,7 +464,7 @@ class Widget(QWidget):
 		except Exception as e:
 			self.floating_message("dialog-warning", f"could not rename {file_path} to {new_path}: {str(e)}")
 
-	def windows_with_path(self, path: str) -> List[krita.Window]:
+	def windows_with_path(self, path: str) -> list[krita.Window]:
 		windows = []
 		for win in self.kr.windows():
 			for view in win.views():
