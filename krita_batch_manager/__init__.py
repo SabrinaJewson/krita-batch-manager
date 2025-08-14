@@ -1,16 +1,20 @@
 from PyQt5.QtCore import *
 from PyQt5.QtGui import * # type: ignore[assignment]
 from PyQt5.QtWidgets import *
+from dataclasses import dataclass
+from enum import Enum
 from krita import Krita
 from pathlib import Path
 from typing import Callable, cast, Any, Tuple, List
-from dataclasses import dataclass
+import asyncio
 import enum
-from enum import Enum
+import importlib
 import json
 import krita
 import os
-import subprocess
+import sys
+
+from . import async_hack
 
 class Format(Enum):
 	PNG = enum.auto()
@@ -64,6 +68,8 @@ class Widget(QWidget):
 
 	export_btn: QPushButton
 	export_settings_btn: QToolButton
+
+	tasks = async_hack.TaskSet()
 
 	def __init__(self, parent: QWidget, kr: Krita, reload: Callable[[], None] | None) -> None:
 		super().__init__(parent)
@@ -223,7 +229,7 @@ class Widget(QWidget):
 		if action == open_action: self.open_file(selected_item)
 		elif action == delete_action: self.delete_file(file_path)
 		elif action == rename_action: self.rename_file(file_path)
-		elif action == export_action: self.export_files([file_path])
+		elif action == export_action: self.export_files([file_path], force=True)
 
 	def open_file(self, item: QListWidgetItem) -> None:
 		if (win := self.kr.activeWindow()) is None: qWarning("no active window"); return
@@ -323,7 +329,10 @@ class Widget(QWidget):
 			files.append(item.data(Qt.UserRole))
 		self.export_files(files)
 
-	def export_files(self, src_paths: List[Path]) -> None:
+	def export_files(self, src_paths: List[Path], force: bool = False) -> None:
+		self.tasks.spawn(self.export_files_inner(src_paths, force))
+
+	async def export_files_inner(self, src_paths: List[Path], force: bool = False) -> None:
 		settings = self.load_export_settings()
 		ext, export_config = settings.export_opts()
 
@@ -334,7 +343,8 @@ class Widget(QWidget):
 				dst_path = Path(settings.export_path) / f"{src_path.stem}.{ext}"
 
 				try:
-					if src_path.stat().st_mtime <= dst_path.stat().st_mtime: continue
+					if not force and src_path.stat().st_mtime <= dst_path.stat().st_mtime:
+						continue
 				except FileNotFoundError: pass
 				except Exception as e:
 					self.floating_message("dialog-warning", f"could not save to {dst_path}: {str(e)}")
@@ -346,6 +356,10 @@ class Widget(QWidget):
 				doc.setBatchmode(True)
 				doc.waitForDone()
 
+				# Sometimes layers will disappear if you export immediately. Adding this sleep in
+				# improves reliability.
+				await async_hack.Wrap(asyncio.sleep(0.1))
+
 				try:
 					if not doc.exportImage(str(dst_path), export_config):
 						self.floating_message("dialog-warning", f"Could not export {src_path}. This is sometimes a bug in Krita, and you should just try again.")
@@ -353,9 +367,16 @@ class Widget(QWidget):
 
 					if settings.format == Format.PNG and settings.oxipng:
 						level = str(min(6, settings.png_compression - 1))
-						binary = "oxipng.exe" if os.name == "nt" else "oxipng"
 						try:
-							compressors.append(subprocess.Popen([binary, "-o", level, "-t", "1", dst_path, "-a"]))
+							compressors.append(await async_hack.Wrap(asyncio.create_subprocess_exec(
+								"oxipng.exe" if os.name == "nt" else "oxipng",
+								"--opt",
+								level,
+								"--threads",
+								"1",
+								dst_path,
+								"--alpha",
+							)))
 						except Exception as e:
 							self.floating_message("dialog-warning", f"could not run oxipng: {str(e)}")
 							return
@@ -364,7 +385,8 @@ class Widget(QWidget):
 				finally:
 					doc.close()
 		finally:
-			for c in compressors: c.wait()
+			for c in compressors:
+				await async_hack.Wrap(c.wait())
 		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s)")
 
 	def delete_file(self, file_path: Path) -> None:
@@ -520,6 +542,9 @@ class DockWidget(krita.DockWidget):
 		self.w.canvas_changed(canvas)
 
 	def reload(self, kr: Krita) -> None:
+		for m in list(m for n, m in sys.modules.items() if n.startswith("krita_batch_manager.")):
+			importlib.reload(m)
+
 		script_path = os.path.abspath(__file__)
 		g: dict[str, Any] = { "reloading": None, "__name__": __name__, "__package__": __name__ }
 		with open(script_path) as f: exec(f.read(), g)

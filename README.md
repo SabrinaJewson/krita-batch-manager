@@ -21,7 +21,7 @@ For example:
 ```
 mkdir ~/.local/share/krita/pykrita/krita_batch_manager
 ln -s "$PWD"/krita_batch_manager.desktop ~/.local/share/krita/pykrita
-ln -s "$PWD"/krita_batch_manager/__init__.py ~/.local/share/krita/pykrita/krita_batch_manager
+ln -s "$PWD"/krita_batch_manager/*.py ~/.local/share/krita/pykrita/krita_batch_manager
 ```
 
 # Usage
