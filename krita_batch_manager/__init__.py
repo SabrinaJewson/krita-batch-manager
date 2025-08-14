@@ -251,6 +251,7 @@ class Widget(QWidget):
 
 	def import_images(self) -> None:
 		if self.current_dir is None: return
+		current_doc = self.kr.activeDocument()
 
 		files, _ = QFileDialog.getOpenFileNames(
 			self,
@@ -272,6 +273,10 @@ class Widget(QWidget):
 		overwrite = QCheckBox()
 		layout.addRow("Overwriting existing files:", overwrite)
 
+		copy_structure = QCheckBox()
+		if current_doc is not None:
+			layout.addRow("Copy non-background layers from current document:", copy_structure)
+
 		buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 		buttons.accepted.connect(options_dialog.accept)
 		buttons.rejected.connect(options_dialog.reject)
@@ -279,10 +284,7 @@ class Widget(QWidget):
 
 		if options_dialog.exec_() != QDialog.Accepted: return
 
-		dpi = dpi_spin.value()
-
 		imported = 0
-
 		for src_path in files:
 			dst_path = self.current_dir / (Path(src_path).stem + ".kra")
 			if not overwrite.isChecked() and dst_path.exists():
@@ -292,7 +294,15 @@ class Widget(QWidget):
 			if (doc := self.kr.openDocument(src_path)) is None:
 				self.floating_message("dialog-warning", f"failed to open {src_path}")
 				break
-			doc.setResolution(dpi)
+
+			doc.setResolution(dpi_spin.value())
+
+			if copy_structure.isChecked() and current_doc is not None and (root_node := doc.rootNode()) is not None:
+				for node in current_doc.topLevelNodes():
+					if node.name() == "Background":
+						continue
+					root_node.addChildNode(node.clone(), None)
+
 			doc.saveAs(str(dst_path))
 			doc.close()
 			self.update_file_list()
