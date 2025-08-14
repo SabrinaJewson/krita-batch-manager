@@ -112,7 +112,7 @@ class Widget(QWidget):
 		export_layout = QHBoxLayout()
 
 		self.export_path_edit = QLineEdit()
-		self.export_path_edit.setPlaceholderText("Export directory…")
+		self.export_path_edit.setPlaceholderText("Export to…")
 		self.export_path_edit.textChanged.connect(self.update_export_state)
 		browse_btn = QPushButton()
 		browse_btn.setIcon(self.kr.icon("folder"))
@@ -299,6 +299,9 @@ class Widget(QWidget):
 		if current_doc is not None:
 			layout.addRow("Copy non-background layers from current document:", copy_structure)
 
+		file_layer = QCheckBox()
+		layout.addRow("Import as file layer:", file_layer)
+
 		buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 		buttons.accepted.connect(options_dialog.accept)
 		buttons.rejected.connect(options_dialog.reject)
@@ -320,7 +323,7 @@ class Widget(QWidget):
 				else: raise Exception
 
 			qInfo(f"exporting {src_path} to {dst_path}")
-			if (doc := self.kr.openDocument(src_path)) is None:
+			if (doc := self.kr.openDocument(src_path)) is None or (root_node := doc.rootNode()) is None:
 				self.floating_message("dialog-warning", f"failed to open {src_path}")
 				break
 
@@ -335,8 +338,14 @@ class Widget(QWidget):
 					try:
 						dst_doc.setBatchmode(True)
 
-						for node in doc.topLevelNodes():
-							dst_node.addChildNode(node.clone(), None)
+						if file_layer.isChecked():
+							# We don’t actually need to open `doc` in this particular case. Seems
+							# hard to optimize that though.
+							layer = dst_doc.createFileLayer("Foreground", str(src_path), "None")
+							dst_node.addChildNode(layer, None)
+						else:
+							for node in doc.topLevelNodes():
+								dst_node.addChildNode(node.clone(), None)
 
 						if should_save and not dst_doc.save():
 							self.floating_message("dialog-warning", f"failed to save {dst_path}")
@@ -345,7 +354,15 @@ class Widget(QWidget):
 						if opened_new: dst_doc.close()
 						else: dst_doc.setBatchmode(False)
 				else:
-					if copy_structure.isChecked() and current_doc is not None and (root_node := doc.rootNode()) is not None:
+					if file_layer.isChecked():
+						existing_nodes = doc.topLevelNodes()
+
+						layer = doc.createFileLayer("Background", str(src_path), "None")
+						root_node.addChildNode(layer, None)
+
+						for node in existing_nodes: node.remove()
+
+					if copy_structure.isChecked() and current_doc is not None:
 						for node in current_doc.topLevelNodes():
 							if node.name() == "Background":
 								continue
