@@ -5,15 +5,15 @@ Supports:
 
 # Installation
 
-+ Download this repository, e.g. using `git clone` or “Code → Download ZIP” on GitHub.
-+ In Krita, go to to Settings → Manage Resources, then click “Open Resource Folder”.
-+ Make a folder called `pykrita` in the resource folder, if it doesn’t already exist.
-+ Copy the `krita_batch_manager.desktop` file into the `pykrita` folder.
-+ Make a folder called `krita_batch_manager` in the `pykrita` folder.
-+ Copy the `krita_batch_manager/__init__.py` file into the newly made `krita_batch_manager` folder.
-+ Go to Settings → Configure Krita → Python Plugin Manager and check “Batch Manager”.
-+ Restart Krita.
-+ Go to Settings → Dockers, and you should be able to check “Batch Manager”.
+1. Download this repository, e.g. using `git clone` or “Code → Download ZIP” on GitHub.
+1. In Krita, go to to Settings → Manage Resources, then click “Open Resource Folder”.
+1. Make a folder called `pykrita` in the resource folder, if it doesn’t already exist.
+1. Copy the `krita_batch_manager.desktop` file into the `pykrita` folder.
+1. Make a folder called `krita_batch_manager` in the `pykrita` folder.
+1. Copy the `krita_batch_manager/__init__.py` file into the newly made `krita_batch_manager` folder.
+1. Go to Settings → Configure Krita → Python Plugin Manager and check “Batch Manager”.
+1. Restart Krita.
+1. Go to Settings → Dockers, and you should be able to check “Batch Manager”.
 
 If on Unix, you may want to use symlinks to keep things up-to-date automatically.
 For example:
@@ -26,7 +26,7 @@ ln -s "$PWD"/krita_batch_manager/__init__.py ~/.local/share/krita/pykrita/krita_
 
 # Usage
 
-![](demo.png)
+![](demo.webp)
 
 Batch Manager will appear as a docker.
 You can see it displays a list of all the `.kra` files in the current directory.
