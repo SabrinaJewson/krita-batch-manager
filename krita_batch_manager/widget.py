@@ -68,8 +68,8 @@ class Widget(QWidget):
 
 	tasks = async_hack.TaskSet()
 
-	def __init__(self, parent: QWidget, kr: Krita, reload: Callable[[], None] | None) -> None:
-		super().__init__(parent)
+	def __init__(self, kr: Krita, reload: Callable[[], None] | None) -> None:
+		super().__init__()
 		self.kr = kr
 
 		layout = QVBoxLayout(self)

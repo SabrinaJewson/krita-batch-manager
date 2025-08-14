@@ -17,16 +17,16 @@ class DockWidget(krita.DockWidget):
 		reload = None
 		if os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_mode")):
 			reload = lambda: self.reload(kr)
-		self.w = widget.Widget(self, kr, reload)
+		self.w = widget.Widget(kr, reload)
 		self.setWidget(self.w)
 
 	def canvasChanged(self, canvas: krita.Canvas | None) -> None:
 		self.w.canvas_changed(canvas)
 
 	def reload(self, kr: Krita) -> None:
-		for m in list(m for n, m in sys.modules.items() if n.startswith("krita_batch_manager.")):
+		for m in list(m for n, m in sys.modules.items() if n.startswith(f"{__name__}.")):
 			importlib.reload(m)
-		self.w = widget.Widget(self, kr, lambda: self.reload(kr))
+		self.w = widget.Widget(kr, lambda: self.reload(kr))
 		self.setWidget(self.w)
 
 if (kr := Krita.instance()) is not None:
