@@ -18,10 +18,8 @@ Supports:
 If on Unix, you may want to use symlinks to keep things up-to-date automatically.
 For example:
 
-```
-mkdir ~/.local/share/krita/pykrita/krita_batch_manager
-ln -s "$PWD"/krita_batch_manager.desktop ~/.local/share/krita/pykrita
-ln -s "$PWD"/krita_batch_manager/*.py ~/.local/share/krita/pykrita/krita_batch_manager
+```sh
+ln -s "$PWD"/krita_batch_manager* ~/.local/share/krita/pykrita
 ```
 
 # Usage
