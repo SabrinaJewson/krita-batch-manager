@@ -60,7 +60,6 @@ class Widget(QWidget):
 	prev_btn: QPushButton
 	next_btn: QPushButton
 	import_btn: QPushButton
-	distribute_btn: QPushButton
 
 	export_path_edit: QLineEdit
 	export_btn: QPushButton
@@ -79,24 +78,20 @@ class Widget(QWidget):
 		self.prev_btn = QPushButton("←")
 		self.next_btn = QPushButton("→")
 		self.import_btn = QPushButton("+")
-		self.distribute_btn = QPushButton()
-		self.distribute_btn.setIcon(self.kr.icon("merge-layer-below"))
 		refresh_btn = QPushButton("⟳")
 		select_btn = QPushButton()
 		select_btn.setIcon(self.kr.icon("folder"))
 		self.prev_btn.clicked.connect(lambda: self.go(-1))
 		self.next_btn.clicked.connect(lambda: self.go(1))
 		self.import_btn.clicked.connect(self.import_images)
-		self.distribute_btn.clicked.connect(lambda: self.distribute(self.listed_files()))
 		refresh_btn.clicked.connect(self.refresh)
 		select_btn.clicked.connect(self.select_dir)
 		self.prev_btn.setToolTip("Go to previous file")
 		self.next_btn.setToolTip("Go to next file")
 		self.import_btn.setToolTip("Import files as .kra files")
-		self.distribute_btn.setToolTip("Distribute current layer to all files")
 		refresh_btn.setToolTip("Refresh file list")
 		select_btn.setToolTip("Select folder")
-		for btn in [self.prev_btn, self.next_btn, self.import_btn, self.distribute_btn, refresh_btn, select_btn]:
+		for btn in [self.prev_btn, self.next_btn, self.import_btn, refresh_btn, select_btn]:
 			btn.setStyleSheet("margin:0px;padding:0px");
 			nav_layout.addWidget(btn)
 		layout.addLayout(nav_layout)
@@ -167,7 +162,6 @@ class Widget(QWidget):
 		export_settings = self.load_export_settings()
 		self.export_path_edit.setText(export_settings.export_path)
 		self.import_btn.setEnabled(current_dir is not None)
-		self.distribute_btn.setEnabled(current_dir is not None)
 
 	def update_file_list(self) -> None:
 		self.file_list.clear()
