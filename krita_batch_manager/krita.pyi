@@ -1,0 +1,1 @@
+/usr/lib/krita-python-libs/PyKrita/krita.pyi

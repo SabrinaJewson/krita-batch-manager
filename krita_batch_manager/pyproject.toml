@@ -1,0 +1,15 @@
+[project]
+name = "krita-batch-manager"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pyqt5>=5.15.11",
+    "pyqt5-stubs>=5.15.6.0",
+]
+
+[dependency-groups]
+dev = ["mypy>=1.15.0"]
+
+[[tool.mypy.overrides]]
+module = "krita"
+ignore_errors = true
