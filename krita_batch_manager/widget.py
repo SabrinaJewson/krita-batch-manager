@@ -61,11 +61,10 @@ class Widget(QWidget):
 	next_btn: QPushButton
 	import_btn: QPushButton
 
-	# Export settings
 	export_path_edit: QLineEdit
-
 	export_btn: QPushButton
 	export_settings_btn: QToolButton
+	export_in_progress: bool = False
 
 	tasks = async_hack.TaskSet()
 
@@ -116,8 +115,7 @@ class Widget(QWidget):
 		export_layout.addWidget(self.export_path_edit, 3)
 		export_layout.addWidget(browse_btn, 1)
 
-		self.export_btn = QPushButton("Export")
-		self.export_btn.setEnabled(False)
+		self.export_btn = QPushButton()
 		self.export_btn.clicked.connect(self.export_listed_files)
 
 		self.export_settings_btn = QToolButton()
@@ -138,6 +136,7 @@ class Widget(QWidget):
 			layout.addWidget(reload_btn)
 
 		self.refresh()
+		self.update_export_state()
 
 	def canvas_changed(self, canvas: krita.Canvas | None) -> None:
 		if canvas is not None:
@@ -198,13 +197,19 @@ class Widget(QWidget):
 
 	def update_export_state(self) -> None:
 		valid = self.current_dir is not None and bool(self.export_path_edit.text().strip())
-		self.export_btn.setEnabled(valid)
-		self.export_btn.setToolTip("Export all KRA files" if valid else "Select export directory first")
+		if self.export_in_progress:
+			self.export_btn.setEnabled(False)
+			self.export_btn.setText("Exporting…")
+		else:
+			self.export_btn.setEnabled(valid)
+			self.export_btn.setToolTip("Export all KRA files" if valid else "Select export directory first")
+			self.export_btn.setText("Export")
 		self.export_settings_btn.setEnabled(valid)
 		if valid:
 			settings = self.load_export_settings()
-			settings.export_path = self.export_path_edit.text().strip()
-			self.save_export_settings(settings)
+			if settings.export_path != self.export_path_edit.text().strip():
+				settings.export_path = self.export_path_edit.text().strip()
+				self.save_export_settings(settings)
 
 	def select_dir(self) -> None:
 		path = QFileDialog.getExistingDirectory(self, "Select Directory")
@@ -334,6 +339,8 @@ class Widget(QWidget):
 		settings = self.load_export_settings()
 		ext, export_config = settings.export_opts()
 
+		self.export_in_progress = True
+		self.update_export_state()
 		compressors = []
 
 		try:
@@ -383,8 +390,12 @@ class Widget(QWidget):
 				finally:
 					doc.close()
 		finally:
-			for c in compressors:
-				await async_hack.Wrap(c.wait())
+			try:
+				for c in compressors:
+					await async_hack.Wrap(c.wait())
+			finally:
+				self.export_in_progress = False
+				self.update_export_state()
 		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s)")
 
 	def delete_file(self, file_path: Path) -> None:
