@@ -245,18 +245,20 @@ class Widget(QWidget):
 	def open_file(self, item: QListWidgetItem) -> None:
 		if (win := self.kr.activeWindow()) is None: qWarning("no active window"); return
 		target_path = str(item.data(Qt.UserRole))
-		doc, _ = self.open_or_reuse(target_path)
+		doc, _, _ = self.open_or_reuse(target_path)
 		try:
 			v = next(v for v in win.views() if v.document() == doc)
 			v.setVisible()
 		except StopIteration:
 			win.addView(doc)
 
-	def open_or_reuse(self, path: str) -> Tuple[krita.Document | None, bool]:
+	# returns (document, opened new, should save)
+	def open_or_reuse(self, path: str) -> Tuple[krita.Document | None, bool, bool]:
 		try:
-			return (next(d for d in self.kr.documents() if d.fileName() == path), False)
+			doc = next(d for d in self.kr.documents() if d.fileName() == path)
+			return (doc, False, not doc.modified())
 		except StopIteration:
-			return (self.kr.openDocument(path), True)
+			return (self.kr.openDocument(path), True, True)
 
 	def go(self, offset: int) -> None:
 		if self.active_file is None: return
@@ -286,8 +288,12 @@ class Widget(QWidget):
 		dpi_spin.setValue(72)
 		layout.addRow("DPI:", dpi_spin)
 
-		overwrite = QCheckBox()
-		layout.addRow("Overwriting existing files:", overwrite)
+		with_existing = QComboBox()
+		with_existing.addItem("Skip")
+		with_existing.addItem("Overwrite")
+		with_existing.addItem("Add as layer")
+		with_existing.setCurrentIndex(0)
+		layout.addRow("If files already exist:", with_existing)
 
 		copy_structure = QCheckBox()
 		if current_doc is not None:
@@ -303,25 +309,55 @@ class Widget(QWidget):
 		imported = 0
 		for src_path in files:
 			dst_path = self.current_dir / (Path(src_path).stem + ".kra")
-			if not overwrite.isChecked() and dst_path.exists():
-				qWarning(f"skipping {dst_path} (already exists)")
-				continue
+
+			add_to_dst_as_layer = False
+
+			if dst_path.exists():
+				i = with_existing.currentIndex()
+				if i == 0: qWarning(f"skipping {dst_path} (already exists)"); continue
+				elif i == 1: pass
+				elif i == 2: add_to_dst_as_layer = True
+				else: raise Exception
+
 			qInfo(f"exporting {src_path} to {dst_path}")
 			if (doc := self.kr.openDocument(src_path)) is None:
 				self.floating_message("dialog-warning", f"failed to open {src_path}")
 				break
 
-			doc.setResolution(dpi_spin.value())
+			try:
+				doc.setResolution(dpi_spin.value())
 
-			if copy_structure.isChecked() and current_doc is not None and (root_node := doc.rootNode()) is not None:
-				for node in current_doc.topLevelNodes():
-					if node.name() == "Background":
-						continue
-					root_node.addChildNode(node.clone(), None)
+				if add_to_dst_as_layer:
+					dst_doc, opened_new, should_save = self.open_or_reuse(str(dst_path))
+					if dst_doc is None or (dst_node := dst_doc.rootNode()) is None:
+						self.floating_message("dialog-warning", f"failed to open {dst_path}")
+						break
+					try:
+						dst_doc.setBatchmode(True)
 
-			doc.saveAs(str(dst_path))
-			doc.close()
-			self.update_file_list()
+						for node in doc.topLevelNodes():
+							dst_node.addChildNode(node.clone(), None)
+
+						if should_save and not dst_doc.save():
+							self.floating_message("dialog-warning", f"failed to save {dst_path}")
+							break
+					finally:
+						if opened_new: dst_doc.close()
+						else: dst_doc.setBatchmode(False)
+				else:
+					if copy_structure.isChecked() and current_doc is not None and (root_node := doc.rootNode()) is not None:
+						for node in current_doc.topLevelNodes():
+							if node.name() == "Background":
+								continue
+							root_node.addChildNode(node.clone(), None)
+
+					if not doc.saveAs(str(dst_path)):
+						self.floating_message("dialog-warning", f"failed to save to {dst_path}")
+						break
+
+					self.update_file_list()
+			finally:
+				doc.close()
 			imported += 1
 
 		self.floating_message("dialog-ok", f"successfully imported {imported} files")
@@ -333,23 +369,23 @@ class Widget(QWidget):
 		for file in files:
 			if src_doc.fileName() == str(file): continue
 
-			doc, opened_new = self.open_or_reuse(str(file))
+			doc, opened_new, should_save = self.open_or_reuse(str(file))
 			if doc is None:
 				self.floating_message("dialog-warning", f"failed to open {file}")
 				break
 
 			try:
 				doc.setBatchmode(True)
+
 				if (root_node := doc.rootNode()) is None: continue
 				root_node.addChildNode(src_node.clone(), None)
-				if opened_new and not doc.save():
+
+				if should_save and not doc.save():
 					self.floating_message("dialog-warning", f"failed to save {file}")
 					break
 			finally:
-				if opened_new:
-					doc.close()
-				else:
-					doc.setBatchmode(False)
+				if opened_new: doc.close()
+				else: doc.setBatchmode(False)
 
 	def choose_export_path(self):
 		path = QFileDialog.getExistingDirectory(self, "Select Export Directory")
