@@ -329,39 +329,42 @@ class Widget(QWidget):
 
 		compressors = []
 
-		for src_path in src_paths:
-			dst_path = Path(settings.export_path) / f"{src_path.stem}.{ext}"
+		try:
+			for src_path in src_paths:
+				dst_path = Path(settings.export_path) / f"{src_path.stem}.{ext}"
 
-			try:
-				if src_path.stat().st_mtime <= dst_path.stat().st_mtime: continue
-			except FileNotFoundError: pass
-			except Exception as e:
-				self.floating_message("dialog-warning", f"could not save to {dst_path}: {str(e)}")
-				return
-
-			if (doc := self.kr.openDocument(str(src_path))) is None:
-				self.floating_message("dialog-warning", f"failed to open {src_path}")
-				return
-			doc.setBatchmode(True)
-
-			try:
-				if not doc.exportImage(str(dst_path), export_config):
-					self.floating_message("dialog-warning", f"could not export {src_path}")
+				try:
+					if src_path.stat().st_mtime <= dst_path.stat().st_mtime: continue
+				except FileNotFoundError: pass
+				except Exception as e:
+					self.floating_message("dialog-warning", f"could not save to {dst_path}: {str(e)}")
 					return
 
-				if settings.format == Format.PNG and settings.oxipng:
-					level = str(min(6, settings.png_compression - 1))
-					binary = "oxipng.exe" if os.name == "nt" else "oxipng"
-					try:
-						compressors.append(subprocess.Popen([binary, "-o", level, "-t", "1", dst_path, "-a"]))
-					except Exception as e:
-						self.floating_message("dialog-warning", f"could not run oxipng: {str(e)}")
+				if (doc := self.kr.openDocument(str(src_path))) is None:
+					self.floating_message("dialog-warning", f"failed to open {src_path}")
+					return
+				doc.setBatchmode(True)
+				doc.waitForDone()
+
+				try:
+					if not doc.exportImage(str(dst_path), export_config):
+						self.floating_message("dialog-warning", f"Could not export {src_path}. This is sometimes a bug in Krita, and you should just try again.")
 						return
 
-				qInfo(f"exported to {dst_path}")
-			finally:
-				doc.close()
-		for c in compressors: c.wait()
+					if settings.format == Format.PNG and settings.oxipng:
+						level = str(min(6, settings.png_compression - 1))
+						binary = "oxipng.exe" if os.name == "nt" else "oxipng"
+						try:
+							compressors.append(subprocess.Popen([binary, "-o", level, "-t", "1", dst_path, "-a"]))
+						except Exception as e:
+							self.floating_message("dialog-warning", f"could not run oxipng: {str(e)}")
+							return
+
+					qInfo(f"exported to {dst_path}")
+				finally:
+					doc.close()
+		finally:
+			for c in compressors: c.wait()
 		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s)")
 
 	def delete_file(self, file_path: Path) -> None:
@@ -416,7 +419,7 @@ class Widget(QWidget):
 		settings = self.load_export_settings()
 
 		dialog = QDialog(self)
-		dialog.setWindowTitle("Export Settings")
+		dialog.setWindowTitle("Export settings")
 		layout = QFormLayout(dialog)
 
 		format_combo = QComboBox()
