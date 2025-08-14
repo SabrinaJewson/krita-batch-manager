@@ -101,6 +101,7 @@ class Widget(QWidget):
 		self.file_list.itemDoubleClicked.connect(self.open_file)
 		self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
 		self.file_list.customContextMenuRequested.connect(self.show_context_menu)
+		self.file_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
 		layout.addWidget(self.file_list, 1)
 
 		export_layout = QHBoxLayout()
@@ -216,10 +217,9 @@ class Widget(QWidget):
 		if path: self.set_current_dir(Path(path))
 
 	def show_context_menu(self, position: QPoint) -> None:
-		selected_item = self.file_list.itemAt(position)
-		if not selected_item: return
-
-		file_path: Path = selected_item.data(Qt.UserRole)
+		items = self.file_list.selectedItems()
+		file_paths: list[Path] = [item.data(Qt.UserRole) for item in items]
+		if not file_paths: return
 
 		menu = QMenu()
 		open_action = menu.addAction("Open")
@@ -229,10 +229,10 @@ class Widget(QWidget):
 		export_action.setEnabled(bool(self.export_path_edit.text().strip()))
 
 		action = menu.exec_(self.file_list.mapToGlobal(position))
-		if action == open_action: self.open_file(selected_item)
-		elif action == delete_action: self.delete_file(file_path)
-		elif action == rename_action: self.rename_file(file_path)
-		elif action == export_action: self.export_files([file_path], force=True)
+		if action == open_action: self.open_file(items[0])
+		elif action == delete_action: self.delete_file(file_paths)
+		elif action == rename_action: self.rename_file(file_paths[0])
+		elif action == export_action: self.export_files(file_paths, force=True)
 
 	def open_file(self, item: QListWidgetItem) -> None:
 		if (win := self.kr.activeWindow()) is None: qWarning("no active window"); return
@@ -398,18 +398,19 @@ class Widget(QWidget):
 				self.update_export_state()
 		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s)")
 
-	def delete_file(self, file_path: Path) -> None:
+	def delete_file(self, file_paths: list[Path]) -> None:
 		if QMessageBox.question(
 			self,
 			"Confirm Delete",
-			f"Delete {file_path.name}?",
+			f"Delete {', '.join(file_path.name for file_path in file_paths)}?",
 			QMessageBox.Yes | QMessageBox.No
 		) != QMessageBox.Yes: return
-		self.close_with_path(str(file_path))
-		try:
-			file_path.unlink()
-		except Exception as e:
-			self.floating_message("dialog-warning", f"could not delete {file_path}: {str(e)}")
+		self.close_with_path({ str(file_path) for file_path in file_paths })
+		for file_path in file_paths:
+			try:
+				file_path.unlink()
+			except Exception as e:
+				self.floating_message("dialog-warning", f"could not delete {file_path}: {str(e)}")
 		self.update_file_list()
 
 	def rename_file(self, file_path: Path) -> None:
@@ -422,7 +423,7 @@ class Widget(QWidget):
 			if new_path.exists():
 				raise Exception("target already exists")
 			windows = self.windows_with_path(str(file_path))
-			self.close_with_path(str(file_path))
+			self.close_with_path({ str(file_path) })
 			file_path.rename(new_path)
 			if (doc := self.kr.openDocument(str(new_path))) is not None:
 				for window in windows:
@@ -441,9 +442,9 @@ class Widget(QWidget):
 						continue
 		return windows
 
-	def close_with_path(self, path: str):
+	def close_with_path(self, paths: set[str]):
 		for doc in self.kr.documents():
-			if doc.fileName() == path:
+			if doc.fileName() in paths:
 				doc.close()
 
 	def open_settings(self) -> None:

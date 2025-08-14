@@ -1,4 +1,4 @@
-/.mypy_cache
+.mypy_cache
 /.venv
 __pycache__
 dev_mode
