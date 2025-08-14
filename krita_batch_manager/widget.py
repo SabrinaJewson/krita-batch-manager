@@ -473,7 +473,12 @@ class Widget(QWidget):
 			f"Delete {', '.join(file_path.name for file_path in file_paths)}?",
 			QMessageBox.Yes | QMessageBox.No
 		) != QMessageBox.Yes: return
-		self.close_with_path({ str(file_path) for file_path in file_paths })
+
+		paths_to_close = { str(file_path) for file_path in file_paths }
+		for doc in self.kr.documents():
+			if doc.fileName() in paths_to_close:
+				doc.close()
+
 		for file_path in file_paths:
 			try:
 				file_path.unlink()
@@ -490,30 +495,16 @@ class Widget(QWidget):
 		try:
 			if new_path.exists():
 				raise Exception("target already exists")
-			windows = self.windows_with_path(str(file_path))
-			self.close_with_path({ str(file_path) })
+
+			docs = [doc for doc in self.kr.documents() if doc.fileName() == str(file_path)]
+
 			file_path.rename(new_path)
-			if (doc := self.kr.openDocument(str(new_path))) is not None:
-				for window in windows:
-					window.addView(doc)
+
+			for doc in docs: doc.setFileName(str(new_path))
+
 			self.update_file_list()
 		except Exception as e:
 			self.floating_message("dialog-warning", f"could not rename {file_path} to {new_path}: {str(e)}")
-
-	def windows_with_path(self, path: str) -> list[krita.Window]:
-		windows = []
-		for win in self.kr.windows():
-			for view in win.views():
-				if (doc := view.document()) is not None:
-					if doc.fileName() == path:
-						windows.append(win)
-						continue
-		return windows
-
-	def close_with_path(self, paths: set[str]):
-		for doc in self.kr.documents():
-			if doc.fileName() in paths:
-				doc.close()
 
 	def open_settings(self) -> None:
 		settings = self.load_export_settings()
