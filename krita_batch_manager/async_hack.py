@@ -67,7 +67,9 @@ class Task(QObject):
 		asyncio.run_coroutine_threadsafe(wrapper(), loop)
 
 class TaskSet:
-	tasks: list[Task] = []
+	tasks: list[Task]
+	def __init__(self):
+		self.tasks = []
 	def spawn(self, task: Coroutine[Wrap[Any], Any, None]) -> None:
 		self.tasks = [t for t in self.tasks if t.state < 2]
 		self.tasks.append(Task(task))

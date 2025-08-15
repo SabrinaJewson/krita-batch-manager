@@ -54,6 +54,6 @@ Getting started:
 - Run `touch ~/.local/share/krita/pykrita/krita_batch_manager/dev_mode`.
 
 Useful commands:
-- Typechecking: `uv run mypy __init__.py`
+- Typechecking: `uv run mypy krita_batch_manager/__init__.py`
 
 License: EUPL

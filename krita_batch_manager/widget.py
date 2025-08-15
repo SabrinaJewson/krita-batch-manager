@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from krita import Krita
 from pathlib import Path
-from typing import Callable, cast, Any, Tuple
+from typing import Callable, cast, Tuple
 import asyncio
 import enum
 import json
@@ -144,7 +144,7 @@ class Widget(QWidget):
 	def refresh(self) -> None:
 		self.document_changed(self.kr.activeDocument())
 
-	def document_changed(self, doc: Any) -> None:
+	def document_changed(self, doc: object) -> None:
 		if isinstance(doc, krita.Document):
 			if doc.fileName():
 				self.set_current_dir(Path(doc.fileName()).parent)
@@ -577,21 +577,38 @@ class Widget(QWidget):
 		config_path = self.current_dir / "export_settings.json"
 
 		try:
-			if config_path.exists():
-				with open(config_path, 'r') as f:
-					settings = json.load(f)
+			if not config_path.exists():
+				return ExportSettings()
 
-				return ExportSettings(
-					export_path=settings["export_path"],
-					format=Format[settings["format"]],
-					png_compression=max(min(int(settings["png_compression"]), 9), 1),
-					oxipng=bool(settings["oxipng"]),
-					webp_method=max(min(int(settings["webp_method"]), 6), 0),
-				)
+			with open(config_path, 'r') as f:
+				settings: object | dict[object, object] = json.load(f)
+
+			if not isinstance(settings, dict): raise Exception("expected root object")
+
+			def as_str(field: str) -> str:
+				val = settings[field]
+				if not isinstance(val, str): raise Exception(f"field {field} should be string")
+				return val
+			def as_bool(field: str) -> bool:
+				val = settings[field]
+				if not isinstance(val, bool): raise Exception(f"field {field} should be boolean")
+				return val
+			def as_int(field: str, min: int, max: int) -> int:
+				val = settings[field]
+				if not isinstance(val, int): raise Exception(f"field {field} should be integer")
+				if val < min or val > max: raise Exception(f"field {field} should be between {min} and {max}")
+				return val
+
+			return ExportSettings(
+				export_path=as_str("export_path"),
+				format=Format[as_str("format")],
+				png_compression=as_int("png_compression", 1, 9),
+				oxipng=as_bool("oxipng"),
+				webp_method=as_int("webp_method", 0, 6),
+			)
 		except Exception as e:
-			qWarning(f"loading settings: {str(e)}")
-
-		return ExportSettings()
+			qWarning(f"loading settings from {config_path}: {str(e)}")
+			return ExportSettings()
 
 	# see https://scripting.krita.org/icon-library for the icons available
 	def floating_message(self, icon: str, msg: str) -> None:
