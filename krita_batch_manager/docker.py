@@ -1,3 +1,4 @@
+from __future__ import annotations
 from PyQt5.QtCore import *
 from PyQt5.QtGui import * # type: ignore[assignment]
 from PyQt5.QtWidgets import *
@@ -13,6 +14,7 @@ import krita
 import os
 
 from . import async_hack
+from . import json_cursor
 
 class Format(Enum):
 	PNG = enum.auto()
@@ -49,6 +51,30 @@ class ExportSettings:
 			config.setProperty("lossless", False)
 			config.setProperty("method", self.webp_method)
 			return ("webp", config)
+
+	@staticmethod
+	def from_json(path: Path) -> ExportSettings:
+		root = json_cursor.Any.from_file(path).object()
+		self = ExportSettings(
+			export_path=root.get("export_path").str().nonempty(),
+			format=root.get("format").enum(Format),
+			png_compression=root.get("png_compression").int().between(1, 9),
+			oxipng=root.get("oxipng").bool(),
+			webp_method=root.get("webp_method").int().between(0, 6),
+		)
+		root.deny_unknown()
+		return self
+
+	def to_json(self, path: Path) -> None:
+		data = {
+			"export_path": self.export_path,
+			"format": self.format.name,
+			"png_compression": self.png_compression,
+			"oxipng": self.oxipng,
+			"webp_method": self.webp_method,
+		}
+		with open(path, 'w') as f:
+			json.dump(data, f)
 
 class Widget(QWidget):
 	kr: Krita
@@ -555,20 +581,8 @@ class Widget(QWidget):
 
 	def save_export_settings(self, settings: ExportSettings) -> None:
 		if self.current_dir is None: return
-
-		config_path = self.current_dir / "export_settings.json"
-
-		settings_json = {
-			"export_path": settings.export_path,
-			"format": settings.format.name,
-			"png_compression": settings.png_compression,
-			"oxipng": settings.oxipng,
-			"webp_method": settings.webp_method,
-		}
-
 		try:
-			with open(config_path, 'w') as f:
-				json.dump(settings_json, f, indent=2)
+			settings.to_json(self.current_dir / "export_settings.json")
 		except Exception as e:
 			self.floating_message("dialog-warning", f"could not save settings: {str(e)}")
 
@@ -581,32 +595,7 @@ class Widget(QWidget):
 			if not config_path.exists():
 				return ExportSettings()
 
-			with open(config_path, 'r') as f:
-				settings: object | dict[object, object] = json.load(f)
-
-			if not isinstance(settings, dict): raise Exception("expected root object")
-
-			def as_str(field: str) -> str:
-				val = settings[field]
-				if not isinstance(val, str): raise Exception(f"field {field} should be string")
-				return val
-			def as_bool(field: str) -> bool:
-				val = settings[field]
-				if not isinstance(val, bool): raise Exception(f"field {field} should be boolean")
-				return val
-			def as_int(field: str, min: int, max: int) -> int:
-				val = settings[field]
-				if not isinstance(val, int): raise Exception(f"field {field} should be integer")
-				if val < min or val > max: raise Exception(f"field {field} should be between {min} and {max}")
-				return val
-
-			return ExportSettings(
-				export_path=as_str("export_path"),
-				format=Format[as_str("format")],
-				png_compression=as_int("png_compression", 1, 9),
-				oxipng=as_bool("oxipng"),
-				webp_method=as_int("webp_method", 0, 6),
-			)
+			return ExportSettings.from_json(config_path)
 		except Exception as e:
 			qWarning(f"loading settings from {config_path}: {str(e)}")
 			return ExportSettings()
