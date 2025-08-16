@@ -52,7 +52,16 @@ class Driver:
 
 		try:
 			self.global_ = Rucksack(Path(kr.getAppDataLocation()) / "rucksack")
-			self.local = Rucksack(Path(doc.fileName()).parent / "rucksack") if doc.fileName() else None
+			self.local = None
+			if doc.fileName():
+				file_path = Path(doc.fileName())
+				found = None
+				for parent in file_path.parents:
+					path = parent / "krita-rucksack"
+					if path.exists():
+						found = path
+						break
+				self.local = Rucksack(found if found is not None else (file_path.parent / "krita-rucksack"))
 		except Exception as e: self.error(str(e)); raise IgnoredException
 
 		is_text = False
