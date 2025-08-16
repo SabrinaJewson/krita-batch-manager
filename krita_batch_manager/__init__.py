@@ -6,6 +6,7 @@ import os
 import sys
 
 from . import docker
+from . import open_rucksack
 
 class DockWidget(krita.DockWidget):
 	w: docker.Widget | None
@@ -21,7 +22,7 @@ class DockWidget(krita.DockWidget):
 		self.setWindowTitle("Batch Manager")
 		self.w = docker.Widget(self.kr)
 
-		if os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_mode")):
+		if dev_mode:
 			container = QWidget()
 			layout = QVBoxLayout(container)
 			layout.setContentsMargins(0, 0, 0, 0)
@@ -58,6 +59,30 @@ class DockWidget(krita.DockWidget):
 		self.w = docker.Widget(self.kr)
 		layout.addWidget(self.w)
 
+class Extension(krita.Extension):
+	kr: Krita
+
+	def __init__(self, kr: Krita) -> None:
+		super().__init__()
+		self.kr = kr
+
+	def setup(self) -> None:
+		pass
+
+	def createActions(self, window: krita.Window | None) -> None:
+		if window is None: return
+		if (action := window.createAction("open_rucksack", "Open Rucksack", "tools/scripts")) is None: return
+		action.triggered.connect(self.open_rucksack)
+
+	def open_rucksack(self) -> None:
+		if dev_mode:
+			for m in list(m for n, m in sys.modules.items() if n.startswith(f"{__name__}.")):
+				importlib.reload(m)
+		open_rucksack.run(self.kr)
+
 if (kr := Krita.instance()) is not None:
+	dev_mode = os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_mode"))
+
 	pos = krita.DockWidgetFactoryBase.DockPosition.DockRight
 	kr.addDockWidgetFactory(krita.DockWidgetFactory("Batch Manager", pos, DockWidget))
+	kr.addExtension(Extension(kr))
