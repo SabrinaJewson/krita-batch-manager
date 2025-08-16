@@ -31,10 +31,10 @@ class DockWidget(krita.DockWidget):
 
 			self.reload_btn = QPushButton("Reload")
 			self.reload_btn.clicked.connect(lambda: self.reload(layout))
-			hlayout.addWidget(self.reload_btn, 1)
+			hlayout.addWidget(self.reload_btn, 2)
 
 			self.close_btn = QPushButton("×")
-			self.close_btn.clicked.connect(self.close_it)
+			self.close_btn.clicked.connect(self.end_dev_mode)
 			hlayout.addWidget(self.close_btn)
 
 			layout.addLayout(hlayout)
@@ -44,7 +44,8 @@ class DockWidget(krita.DockWidget):
 		else:
 			self.setWidget(self.w)
 
-	def close_it(self) -> None:
+	def end_dev_mode(self) -> None:
+		dev_mode = False
 		self.reload_btn.deleteLater()
 		self.close_btn.deleteLater()
 
