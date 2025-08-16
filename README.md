@@ -29,6 +29,8 @@ Batch Manager will appear as a docker.
 You can see it displays a list of all the `.kra` files in the current directory.
 You have several buttons available to you:
 - The left and right arrows will navigate to the previous and next images respectively.
+	Shift- or middle-click these buttons to keep the current image open while doing this
+	(this will happen anyway if the current image has unsaved changes).
 - The plus button batch-imports several images as `.kra` files in the current folder.
 - The refresh icon updates the contents of the list
 	(in case you e.g. change the contents of the folder with a means external to Batch Manager).

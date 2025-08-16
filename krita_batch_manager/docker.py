@@ -102,14 +102,16 @@ class Widget(QWidget):
 		layout.setContentsMargins(0, 0, 0, 0)
 
 		nav_layout = QHBoxLayout()
-		self.prev_btn = QPushButton("←")
-		self.next_btn = QPushButton("→")
+		self.prev_btn = PushButtonCaptureAlt("←")
+		self.next_btn = PushButtonCaptureAlt("→")
 		self.import_btn = QPushButton("+")
 		refresh_btn = QPushButton("⟳")
 		select_btn = QPushButton()
 		select_btn.setIcon(self.kr.icon("folder"))
-		self.prev_btn.clicked.connect(lambda: self.go(-1))
-		self.next_btn.clicked.connect(lambda: self.go(1))
+		self.prev_btn.clicked.connect(lambda: self.go(-1, False))
+		self.next_btn.clicked.connect(lambda: self.go(1, False))
+		self.prev_btn.clicked_alt.connect(lambda: self.go(-1, True))
+		self.next_btn.clicked_alt.connect(lambda: self.go(1, True))
 		self.import_btn.clicked.connect(self.import_images)
 		refresh_btn.clicked.connect(self.refresh)
 		select_btn.clicked.connect(self.select_dir)
@@ -276,12 +278,17 @@ class Widget(QWidget):
 		except StopIteration:
 			return (self.kr.openDocument(path), True, True)
 
-	def go(self, offset: int) -> None:
+	def go(self, offset: int, keep_current: bool) -> None:
+		current_doc = self.kr.activeDocument()
+
 		if self.active_file is None: return
 		new = (self.file_list.row(self.active_file) + offset) % self.file_list.count()
 		item = self.file_list.item(new)
 		assert item is not None
 		self.open_file(item)
+
+		if not keep_current and current_doc is not None and not current_doc.modified():
+			current_doc.close()
 
 	def import_images(self) -> None:
 		if self.current_dir is None: return
@@ -605,3 +612,10 @@ class Widget(QWidget):
 		if (win := self.kr.activeWindow()) is not None:
 			if (view := win.activeView()) is not None:
 				view.showFloatingMessage(msg, self.kr.icon(icon), 2000, 1)
+
+class PushButtonCaptureAlt(QPushButton):
+	clicked_alt = pyqtSignal()
+	def mousePressEvent(self, e: QMouseEvent) -> None:
+		if bool(e.modifiers() & Qt.ShiftModifier) or e.button() == Qt.MiddleButton:
+			self.clicked_alt.emit()
+		super().mousePressEvent(e)
