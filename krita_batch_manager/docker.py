@@ -73,6 +73,7 @@ class Widget(QWidget):
 		self.kr = kr
 
 		layout = QVBoxLayout(self)
+		layout.setContentsMargins(0, 0, 0, 0)
 
 		nav_layout = QHBoxLayout()
 		self.prev_btn = QPushButton("←")
