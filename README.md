@@ -2,6 +2,8 @@ Krita plugin for easy management of entire folders of `*.kra` files.
 Supports:
 - Importing and exporting images in batch.
 - Easy navigation between images.
+- Storing reusable components (text styles, layers, vector objects, layer effects)
+	in a project- or user-specific “rucksack”.
 
 # Installation
 
@@ -46,6 +48,24 @@ Export options can be changed with the button on the right.
 If only some `.kra` files have been changed,
 export functionality will make sure to only re-export the changed ones.
 This makes incremental exports fast.
+
+![](rucksack.webp)
+
+We also support a rucksack, which allows carrying around
+text styles, layers, vector objects and layer effects.
+By default, you can press “r” to open it, or access it via Tools → Scripts → Open Rucksack;
+either click on the entry or type in the bolded text to insert it into your document.
+
+Like the export configuration, each rucksack is local to the directory in which it’s used –
+but you can click the home icon to have individual items be associated with your local user.
+
+To insert items to the rucksack:
+- For layers, just open the rucksack while your desired layer is active.
+- For layer effects, again open the rucksack while the layer which has the effects is active.
+- For vector objects and text, select it before opening the rucksack.
+
+You can shift- or middle-click on entries to insert them while keeping the dialog open.
+
 
 # Development
 
