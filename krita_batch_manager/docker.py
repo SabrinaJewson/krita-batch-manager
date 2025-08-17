@@ -463,17 +463,20 @@ class Widget(QWidget):
 					self.floating_message("dialog-warning", f"could not save to {dst_path}: {str(e)}")
 					return
 
-				if (doc := self.kr.openDocument(str(src_path))) is None:
+				doc, opened_new, _ = self.open_or_reuse(str(src_path))
+				if doc is None:
 					self.floating_message("dialog-warning", f"failed to open {src_path}")
 					return
-				doc.setBatchmode(True)
-				doc.waitForDone()
-
-				# Sometimes layers will disappear if you export immediately. Adding this sleep in
-				# improves reliability.
-				await async_hack.Wrap(asyncio.sleep(0.1))
 
 				try:
+					doc.setBatchmode(True)
+					doc.waitForDone()
+
+					# Sometimes layers will disappear if you export immediately. Adding this sleep
+					# in improves reliability.
+					# https://bugs.kde.org/show_bug.cgi?id=465691
+					await async_hack.Wrap(asyncio.sleep(0.5))
+
 					if not doc.exportImage(str(dst_path), export_config):
 						self.floating_message("dialog-warning", f"Could not export {src_path}. This is sometimes a bug in Krita, and you should just try again.")
 						return
@@ -496,7 +499,8 @@ class Widget(QWidget):
 
 					qInfo(f"exported to {dst_path}")
 				finally:
-					doc.close()
+					if opened_new: doc.close()
+					else: doc.setBatchmode(False)
 		finally:
 			try:
 				for c in compressors:
@@ -618,4 +622,5 @@ class PushButtonCaptureAlt(QPushButton):
 	def mousePressEvent(self, e: QMouseEvent) -> None:
 		if bool(e.modifiers() & Qt.ShiftModifier) or e.button() == Qt.MiddleButton:
 			self.clicked_alt.emit()
+			return
 		super().mousePressEvent(e)
