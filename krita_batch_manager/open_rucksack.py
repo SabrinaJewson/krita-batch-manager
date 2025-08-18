@@ -253,7 +253,7 @@ class Driver:
 		if (doc := self.kr.openDocument(str(path))) is None:
 			self.error(f"could not open {path}")
 			return
-	
+
 		try:
 			active_node = self.active_node
 			for node in doc.topLevelNodes():
@@ -268,7 +268,7 @@ class Driver:
 					active_node = p
 		finally:
 			doc.close()
-	
+
 	def insert_svg(self, svg: str, is_text: bool) -> None:
 		if isinstance(self.active_node, krita.VectorLayer):
 			node = self.active_node
@@ -286,7 +286,7 @@ class Driver:
 				if p.addChildNode(node, self.active_node): break
 				active_node = p
 		self.doc.setActiveNode(node)
-	
+
 		shapes = node.addShapesFromSvg(f"<svg>{svg}</svg>")
 
 		# In `addShapesFromSvg`, Krita will automatically undo the effects of DPI, treating those
@@ -314,24 +314,24 @@ class Driver:
 		# Centre the shapes to the centre of the canvas.
 		offset = centre - shapes_bounding_box.center()
 		for shape in shapes: shape.setPosition(shape.position() + offset)
-	
+
 		for s in node.shapes(): s.deselect()
 		for shape in shapes:
 			shape.select()
 			shape.update() # makes the object actually appear on canvas
-	
+
 		if is_text:
 			# Open the “Edit Text” popup.
 			unwrap(self.kr.action("SvgTextTool")).trigger()
 			unwrap(unwrap(self.qwin.findChild(QDockWidget, "sharedtooldocker")).findChild(QPushButton)).click()
 			QApplication.processEvents() # wait for the window to open
-	
+
 			# Find the newly-created window, enter “Rich text” mode and focus the text field
 			edit_text_win = QApplication.activeWindow()
 			tabs = unwrap(edit_text_win.findChild(QTabWidget))
 			tabs.setCurrentIndex(0)
 			unwrap(tabs.widget(0).findChild(QTextEdit)).setFocus()
-	
+
 			# Select the contents of the text field by going through Edit → Select all.
 			edit_menu = unwrap(edit_text_win.findChild(QMenu, "edit"))
 			next(a for a in edit_menu.actions() if a.objectName() == "edit_select_all").trigger()
