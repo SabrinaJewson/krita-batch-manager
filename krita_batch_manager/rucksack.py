@@ -18,12 +18,12 @@ class Rucksack:
 		self.json_path = self.path / "rucksack.json"
 		self.items = read(self.json_path)
 
-	def layer_path(self, i: int) -> Path:
+	def node_path(self, i: int) -> Path:
 		return self.path / f"{i}.kra"
 
 	def gen_layer_path(self) -> Tuple[int, Path]:
 		for i in range(1024):
-			path = self.layer_path(i)
+			path = self.node_path(i)
 			if path.exists(): continue
 			return i, path
 		raise Exception("could not find suitable layer path")
@@ -33,33 +33,48 @@ class Item:
 	name: str
 	data: ItemData
 
-type ItemData = Layer | Vector | Text | LayerStyle
-
-class ItemKind(Enum):
-	LAYER = enum.auto()
-	VECTOR = enum.auto()
-	TEXT = enum.auto()
-	LAYER_STYLE = enum.auto()
+type ItemData = Node | Vector | LayerStyle
 
 @dataclass
-class Layer:
+class Node:
 	filename: int
-	def kind(self) -> ItemKind: return ItemKind.LAYER
+	kind: NodeKind
+
+class NodeKind(Enum):
+	LAYER = enum.auto()
+	LAYER_FILE = enum.auto()
+	LAYER_FILL = enum.auto()
+	LAYER_FILTER = enum.auto()
+	LAYER_GROUP = enum.auto()
+	LAYER_VECTOR = enum.auto()
+	MASK_COLORIZE = enum.auto()
+	MASK_FILTER = enum.auto()
+	MASK_SELECTION = enum.auto()
+	MASK_TRANSFORM = enum.auto()
+	MASK_TRANSPARENCY = enum.auto()
+
+	def is_mask(self) -> bool:
+		match self:
+			case (NodeKind.LAYER
+				| NodeKind.LAYER_FILE
+				| NodeKind.LAYER_FILL
+				| NodeKind.LAYER_FILTER
+				| NodeKind.LAYER_GROUP
+				| NodeKind.LAYER_VECTOR): return False
+			case (NodeKind.MASK_COLORIZE
+				| NodeKind.MASK_FILTER
+				| NodeKind.MASK_SELECTION
+				| NodeKind.MASK_TRANSFORM
+				| NodeKind.MASK_TRANSPARENCY): return True
 
 @dataclass
 class Vector:
 	svg: str
-	def kind(self) -> ItemKind: return ItemKind.VECTOR
-
-@dataclass
-class Text:
-	svg: str
-	def kind(self) -> ItemKind: return ItemKind.TEXT
+	is_text: bool
 
 @dataclass
 class LayerStyle:
 	asl: str
-	def kind(self) -> ItemKind: return ItemKind.LAYER_STYLE
 
 def read(path: Path) -> list[Item]:
 	try:
@@ -78,14 +93,18 @@ def write(path: Path, items: list[Item]) -> None:
 	with open(path, 'w') as f:
 		json.dump(data, f)
 
+class ItemKind(Enum):
+	NODE = enum.auto()
+	VECTOR = enum.auto()
+	TEXT = enum.auto()
+	LAYER_STYLE = enum.auto()
+
 def format_item_data(item: ItemData) -> json_cursor.Value:
 	match item:
-		case Layer(filename):
-			return { "tag": "LAYER", "filename": filename }
-		case Vector(svg):
-			return { "tag": "VECTOR", "svg": svg }
-		case Text(svg):
-			return { "tag": "TEXT", "svg": svg }
+		case Node(filename, kind):
+			return { "tag": "NODE", "kind": item.kind.name, "filename": filename }
+		case Vector(svg, is_text):
+			return { "tag": "TEXT" if is_text else "VECTOR", "svg": svg }
 		case LayerStyle(asl):
 			return { "tag": "LAYER_STYLE", "asl": asl }
 
@@ -96,18 +115,19 @@ def parse_item(c_item: json_cursor.Any) -> Item:
 	c_item.deny_unknown()
 
 	match c_kind.get("tag").enum(ItemKind):
-		case ItemKind.LAYER:
+		case ItemKind.NODE:
 			filename = c_kind.get("filename").int().at_least(0)
+			kind = c_kind.get("kind").enum(NodeKind)
 			c_kind.deny_unknown()
-			return Item(name, Layer(filename))
+			return Item(name, Node(filename, kind))
 		case ItemKind.VECTOR:
 			svg = c_kind.get("svg").str().value
 			c_kind.deny_unknown()
-			return Item(name, Vector(svg))
+			return Item(name, Vector(svg, is_text=False))
 		case ItemKind.TEXT:
 			svg = c_kind.get("svg").str().value
 			c_kind.deny_unknown()
-			return Item(name, Text(svg))
+			return Item(name, Vector(svg, is_text=True))
 		case ItemKind.LAYER_STYLE:
 			asl = c_kind.get("asl").str().value
 			c_kind.deny_unknown()

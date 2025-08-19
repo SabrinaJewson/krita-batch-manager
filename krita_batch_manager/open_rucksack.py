@@ -7,7 +7,6 @@ from krita import Krita
 from enum import Enum
 from pathlib import Path
 import json
-from typing import Tuple, Iterable
 import enum
 from dataclasses import dataclass
 import html
@@ -34,8 +33,7 @@ class Driver:
 	global_: Rucksack
 	local: Rucksack | None
 
-	shapes_svg: str = ""
-	active_node_style: str
+	possible_saves: list[tuple[rucksack.ItemData, bool]]
 
 	dialog: Dialog
 
@@ -43,12 +41,21 @@ class Driver:
 		super().__init__()
 
 		self.kr = kr
+
 		if (win := kr.activeWindow()) is None: qWarning("no active window"); raise IgnoredException
+		self.win = win
+
 		if (view := win.activeView()) is None: qWarning("no active view"); raise IgnoredException
+		self.view = view
+
 		if (doc := kr.activeDocument()) is None: self.error("no active document"); raise IgnoredException
+		self.doc = doc
+
 		if (active_node := doc.activeNode()) is None: self.error("no active node"); raise IgnoredException
+		self.active_node = active_node
+
 		if (qwin := win.qwindow()) is None: self.error("no qwin"); raise IgnoredException
-		self.win, self.view, self.doc, self.active_node, self.qwin = win, view, doc, active_node, qwin
+		self.qwin = qwin
 
 		try:
 			self.global_ = Rucksack(Path(kr.getAppDataLocation()) / "rucksack")
@@ -64,6 +71,11 @@ class Driver:
 				self.local = Rucksack(found if found is not None else (file_path.parent / "krita-rucksack"))
 		except Exception as e: self.error(str(e)); raise IgnoredException
 
+		# `filename` is a placeholder; it will be filled in later.
+		save_item_node = rucksack.Node(filename=0, kind=node_kind_of_node(active_node))
+		self.possible_saves = [(save_item_node, True)]
+
+		shapes_svg = ""
 		is_text = False
 		if isinstance(active_node, krita.VectorLayer):
 			for shape in active_node.shapes():
@@ -88,20 +100,15 @@ class Driver:
 					new_svg += f"{t.m21()} {t.m22()} "
 					new_svg += f"{t.m31()} {t.m32()}"
 					svg = new_svg + ")\" " + svg[len(prefix):]
-				is_text = not self.shapes_svg and shape_is_text
-				self.shapes_svg += svg
+				is_text = not shapes_svg and shape_is_text
+				shapes_svg += svg
+		self.possible_saves.append((rucksack.Vector(shapes_svg, is_text=False), bool(shapes_svg)))
+		self.possible_saves.append((rucksack.Vector(shapes_svg, is_text=True), bool(shapes_svg) and is_text))
 
-		self.active_node_style = active_node.layerStyleToAsl()
+		layer_style = active_node.layerStyleToAsl()
+		self.possible_saves.append((rucksack.LayerStyle(layer_style), bool(layer_style)))
 
-		save_kinds = {rucksack.ItemKind.LAYER}
-		if self.shapes_svg:
-			save_kinds.add(rucksack.ItemKind.VECTOR)
-			if is_text:
-				save_kinds.add(rucksack.ItemKind.TEXT)
-		if self.active_node_style:
-			save_kinds.add(rucksack.ItemKind.LAYER_STYLE)
-
-		self.dialog = Dialog(kr, allow_local=self.local is not None, save_kinds=save_kinds)
+		self.dialog = Dialog(kr, allow_local=self.local is not None, possible_saves=self.possible_saves)
 		self.update_item_list()
 		self.dialog.add_new.connect(self.on_add_new)
 		self.dialog.delete.connect(self.on_delete)
@@ -120,49 +127,43 @@ class Driver:
 			case Location.GLOBAL: return self.global_
 			case Location.LOCAL: assert self.local is not None; return self.local
 
-	def on_add_new(self, location: Location, name: str, kind: rucksack.ItemKind) -> bool:
+	def on_add_new(self, location: Location, name: str, save_i: int) -> bool:
 		qInfo(f"adding new: {name}")
 
 		target = self.at(location)
+		data, _ = self.possible_saves[save_i]
 
-		data: rucksack.ItemData
-		match kind:
-			case rucksack.ItemKind.LAYER:
-				if (cloned := self.active_node.clone()) is None:
-					self.error("could not clone current layer")
-					return False
+		if isinstance(data, rucksack.Node):
+			if (cloned := self.active_node.clone()) is None:
+				self.error("could not clone current layer")
+				return False
+			node_kind = data.kind
 
-				d = self.kr.createDocument(
-					self.doc.width(),
-					self.doc.height(),
-					"",
-					self.doc.colorModel(),
-					self.doc.colorDepth(),
-					self.doc.colorProfile(),
-					self.doc.resolution(),
-				)
-				if d is None or (root_node := d.rootNode()) is None:
-					self.error("could not create saved layer document"); return False
+			d = self.kr.createDocument(
+				self.doc.width(),
+				self.doc.height(),
+				"",
+				self.doc.colorModel(),
+				self.doc.colorDepth(),
+				self.doc.colorProfile(),
+				self.doc.resolution(),
+			)
+			if d is None or (root_node := d.rootNode()) is None:
+				self.error("could not create saved layer document"); return False
 
-				try:
-					exiting_nodes = d.topLevelNodes()
-					if not root_node.addChildNode(cloned, None):
-						self.error("could not add child node to saved layer document"); return False
-					for node in exiting_nodes: node.remove()
-					i, path = target.gen_layer_path()
-					try: path.parent.mkdir(parents=True, exist_ok=True)
-					except Exception: pass
-					if not d.saveAs(str(path)):
-						self.error("could not save saved layer document"); return False
-					data = rucksack.Layer(i)
-				finally:
-					d.close()
-			case rucksack.ItemKind.VECTOR:
-				data = rucksack.Vector(self.shapes_svg)
-			case rucksack.ItemKind.TEXT:
-				data = rucksack.Text(self.shapes_svg)
-			case rucksack.ItemKind.LAYER_STYLE:
-				data = rucksack.LayerStyle(self.active_node_style)
+			try:
+				bg_node = d.topLevelNodes()[0]
+				if not (bg_node if node_kind.is_mask() else root_node).addChildNode(cloned, None):
+					self.error("could not add child node to saved layer document"); return False
+				if not node_kind.is_mask(): bg_node.remove()
+				i, path = target.gen_layer_path()
+				try: path.parent.mkdir(parents=True, exist_ok=True)
+				except Exception: pass
+				if not d.saveAs(str(path)):
+					self.error("could not save saved layer document"); return False
+				data = rucksack.Node(i, node_kind)
+			finally:
+				d.close()
 
 		new_items = [*target.items, rucksack.Item(name, data)]
 		try: rucksack.write(target.json_path, new_items)
@@ -183,8 +184,8 @@ class Driver:
 		target.items = new_items
 		self.update_item_list()
 
-		if isinstance(item.data, rucksack.Layer):
-			path = target.layer_path(item.data.filename)
+		if isinstance(item.data, rucksack.Node):
+			path = target.node_path(item.data.filename)
 			try: path.unlink(missing_ok=True)
 			except Exception as e: self.error(str(e)); return
 
@@ -203,8 +204,8 @@ class Driver:
 
 		new_rucksack = self.at(new_location)
 
-		if isinstance(item_data, rucksack.Layer):
-			src_path = src_rucksack.layer_path(item_data.filename)
+		if isinstance(item_data, rucksack.Node):
+			src_path = src_rucksack.node_path(item_data.filename)
 			j, dst_path = new_rucksack.gen_layer_path()
 			try:
 				dst_path.parent.mkdir(parents=True, exist_ok=True)
@@ -214,7 +215,7 @@ class Driver:
 					if e.errno != errno.EXDEV: raise e
 					shutil.copy(src_path, dst_path)
 			except Exception as e: self.error(str(e)); return
-			item_data = rucksack.Layer(j)
+			item_data = rucksack.Node(j, item_data.kind)
 
 		new_items = [*new_rucksack.items, rucksack.Item(name, item_data)]
 		try: rucksack.write(new_rucksack.json_path, new_items)
@@ -223,9 +224,9 @@ class Driver:
 
 		self.on_delete(location, i)
 
-	def on_replace(self, location: Location, i: int, kind: rucksack.ItemKind) -> None:
+	def on_replace(self, location: Location, i: int, save_i: int) -> None:
 		name = self.at(location).items[i].name
-		if self.on_add_new(location, name, kind):
+		if self.on_add_new(location, name, save_i):
 			self.on_delete(location, i)
 
 	def on_refresh(self, location: Location) -> None:
@@ -239,35 +240,43 @@ class Driver:
 		target = self.at(location)
 		qInfo(f"chose {target.items[i].name}")
 		match target.items[i].data:
-			case rucksack.Layer(filename):
-				self.insert_layer(target.layer_path(filename))
-			case rucksack.Vector(svg):
-				self.insert_svg(svg, is_text=False)
-			case rucksack.Text(svg):
-				self.insert_svg(svg, is_text=True)
+			case rucksack.Node(filename, kind):
+				self.insert_node(target.node_path(filename), kind.is_mask())
+			case rucksack.Vector(svg, is_text):
+				self.insert_svg(svg, is_text)
 			case rucksack.LayerStyle(asl):
 				# docs say it returns a bool, but it appears not to…
 				self.active_node.setLayerStyleFromAsl(asl)
 
-	def insert_layer(self, path: Path) -> None:
+	def insert_node(self, path: Path, is_mask: bool) -> None:
 		if (doc := self.kr.openDocument(str(path))) is None:
 			self.error(f"could not open {path}")
 			return
 
 		try:
-			active_node = self.active_node
-			for node in doc.topLevelNodes():
-				if (cloned_node := node.clone()) is None:
-					self.error("could not clone node")
-					return
-				while True:
-					if (p := active_node.parentNode()) is None:
-						self.error("could not insert saved layer")
-						return
-					if p.addChildNode(cloned_node, active_node): break
-					active_node = p
+			if is_mask and len(doc.topLevelNodes()) != 1:
+				self.error("saved mask file had wrong number of layers"); return
+			to_copy = doc.topLevelNodes()[0].childNodes() if is_mask else doc.topLevelNodes()
+			if not to_copy: self.error("found no nodes to insert"); return
+
+			for node in to_copy:
+				if (cloned_node := node.clone()) is None: self.error("could not clone node"); return
+				if not self.add_node_nearby(cloned_node): return
 		finally:
 			doc.close()
+
+	def add_node_nearby(self, node: krita.Node) -> bool:
+		active_is_mask = node_kind_of_node(self.active_node).is_mask()
+		node_is_mask = node_kind_of_node(node).is_mask()
+		qInfo(f"{active_is_mask}, {node_is_mask}")
+
+		cursor = self.active_node
+		previous = None
+		for _ in range(int(active_is_mask) - int(node_is_mask) + 1):
+			if (parent := cursor.parentNode()) is None:
+				self.error("node has no parent"); return False
+			cursor, previous = parent, cursor
+		return cursor.addChildNode(node, previous)
 
 	def insert_svg(self, svg: str, is_text: bool) -> None:
 		if isinstance(self.active_node, krita.VectorLayer):
@@ -278,13 +287,8 @@ class Driver:
 			if (new_node := self.doc.createVectorLayer("text" if is_text else "Vector layer")) is None:
 				self.error("could not make vector layer")
 				return
+			if not self.add_node_nearby(new_node): return
 			node = new_node
-			while True:
-				if (p := self.active_node.parentNode()) is None:
-					self.error("could not insert vector layer")
-					return
-				if p.addChildNode(node, self.active_node): break
-				active_node = p
 		self.doc.setActiveNode(node)
 
 		shapes = node.addShapesFromSvg(f"<svg>{svg}</svg>")
@@ -337,31 +341,49 @@ class Driver:
 			next(a for a in edit_menu.actions() if a.objectName() == "edit_select_all").trigger()
 
 	def error(self, msg: str) -> None:
-		qFatal(f"{msg}")
+		qWarning(f"{msg}")
 		self.view.showFloatingMessage(msg, self.kr.icon("dialog-warning"), 2000, 1)
+
+def node_kind_of_node(node: krita.Node) -> rucksack.NodeKind:
+	if isinstance(node, krita.FileLayer): return rucksack.NodeKind.LAYER_FILE
+	if isinstance(node, krita.FillLayer): return rucksack.NodeKind.LAYER_FILL
+	if isinstance(node, krita.FilterLayer): return rucksack.NodeKind.LAYER_FILTER
+	if isinstance(node, krita.GroupLayer): return rucksack.NodeKind.LAYER_GROUP
+	if isinstance(node, krita.VectorLayer): return rucksack.NodeKind.LAYER_VECTOR
+	if isinstance(node, krita.ColorizeMask): return rucksack.NodeKind.MASK_COLORIZE
+	if isinstance(node, krita.FilterMask): return rucksack.NodeKind.MASK_FILTER
+	if isinstance(node, krita.SelectionMask): return rucksack.NodeKind.MASK_SELECTION
+	if isinstance(node, krita.TransformMask): return rucksack.NodeKind.MASK_TRANSFORM
+	if isinstance(node, krita.TransparencyMask): return rucksack.NodeKind.MASK_TRANSPARENCY
+	return rucksack.NodeKind.LAYER
 
 class Location(Enum):
 	LOCAL = enum.auto()
 	GLOBAL = enum.auto()
 
 class Dialog(QDialog):
-	add_new = pyqtSignal(Location, str, rucksack.ItemKind)
-	delete = pyqtSignal(Location, int)
-	rename = pyqtSignal(Location, int, Location, str)
-	replace = pyqtSignal(Location, int, rucksack.ItemKind)
+	add_new = pyqtSignal(Location, str, int) # location, name, chosen save
+	delete = pyqtSignal(Location, int) # location, index
+	rename = pyqtSignal(Location, int, Location, str) # location, index, new location, new name
+	replace = pyqtSignal(Location, int, int) # location, index, chosen save
 	refresh = pyqtSignal(Location)
-	chosen = pyqtSignal(Location, int)
+	chosen = pyqtSignal(Location, int) # location, index
 
 	text_box: LineEditCaptureEscape
-	entries: list[Tuple[Entry, int]] = [] # entries and their original index
+	entries: list[tuple[Entry, int]] = [] # entries and their original index
 	no_entries_text: QLabel | None = None
-	new_entry: Entry | None = None
+	new_entry: tuple[Entry, int] | None = None # entry, chosen save
 	entry_list: QVBoxLayout
 	allow_local: bool
-	save_kinds: set[rucksack.ItemKind]
+	possible_saves: list[tuple[rucksack.ItemData, bool]]
 	kr: Krita
 
-	def __init__(self, kr: Krita, allow_local: bool, save_kinds: set[rucksack.ItemKind]) -> None:
+	def __init__(
+		self,
+		kr: Krita,
+		allow_local: bool,
+		possible_saves: list[tuple[rucksack.ItemData, bool]],
+	) -> None:
 		super().__init__()
 		self.kr = kr
 
@@ -382,22 +404,18 @@ class Dialog(QDialog):
 		layout.addLayout(self.entry_list)
 		layout.addStretch()
 
-		self.save_kinds = save_kinds
-		for kind, text in [
-			(rucksack.ItemKind.LAYER, "Save &layer"),
-			(rucksack.ItemKind.LAYER_STYLE, "Save layer &style"),
-			(rucksack.ItemKind.VECTOR, "Save &vector"),
-			(rucksack.ItemKind.TEXT, "Save &text"),
-		]:
-			button = QPushButton(text)
-			button.clicked.connect(lambda *args, k=kind: self.begin_save(k))
-			button.setEnabled(kind in save_kinds)
+		self.possible_saves = possible_saves
+
+		for i, (item, enabled) in enumerate(possible_saves):
+			button = QPushButton(f"Save {save_desc(item)}")
+			button.clicked.connect(lambda *args, i=i: self.begin_save(i))
+			button.setEnabled(enabled)
 			button.setAutoDefault(False)
 			layout.addWidget(button)
 
 		self.setLayout(layout)
 
-	def set_items(self, global_items: Iterable[rucksack.Item], local_items: Iterable[rucksack.Item]) -> None:
+	def set_items(self, global_items: list[rucksack.Item], local_items: list[rucksack.Item]) -> None:
 		for entry, _ in self.entries:
 			entry.deleteLater()
 		if self.no_entries_text is not None:
@@ -410,23 +428,22 @@ class Dialog(QDialog):
 			(Entry(
 				self.kr,
 				location,
-				item.name,
-				item.data.kind(),
+				item,
 				allow_local=self.allow_local,
-				save_kinds=self.save_kinds,
+				possible_saves=self.possible_saves,
 			), i)
 			for location, i, item in (
 				*((Location.GLOBAL, i, item) for i, item in enumerate(global_items)),
 				*((Location.LOCAL, i, item) for i, item in enumerate(local_items)),
 			)
 		];
-		self.entries.sort(key=lambda e: e[0].name)
+		self.entries.sort(key=lambda e: e[0].item.name)
 
 		for i, (entry, orig_i) in enumerate(self.entries):
-			before = self.entries[i - 1][0].name if 0 < i else ""
-			after = self.entries[i + 1][0].name if i + 1 < len(self.entries) else ""
+			before = self.entries[i - 1][0].item.name if 0 < i else ""
+			after = self.entries[i + 1][0].item.name if i + 1 < len(self.entries) else ""
 			prefix_len = 0
-			for char_index, char in enumerate(entry.name):
+			for char_index, char in enumerate(entry.item.name):
 				if ((len(before) <= char_index or before[char_index] != char) and
 					(len(after) <= char_index or after[char_index] != char)):
 					prefix_len = char_index + 1
@@ -435,7 +452,7 @@ class Dialog(QDialog):
 			entry.deleted.connect(lambda i=orig_i,e=entry: self.delete.emit(e.location, i))
 			entry.renamed.connect(lambda *args, i=i: self.rename_helper(i, *args))
 			entry.chosen.connect(lambda *args, i=i: self.chosen_helper(i, *args))
-			entry.replaced.connect(lambda k,i=orig_i,e=entry: self.replace.emit(e.location, i, k))
+			entry.replaced.connect(lambda j,i=orig_i,e=entry: self.replace.emit(e.location, i, j))
 			self.entry_list.addWidget(entry)
 
 		if not self.entries:
@@ -456,22 +473,23 @@ class Dialog(QDialog):
 		self.chosen.emit(entry.location, orig_i)
 		if not linger: self.accept()
 
-	def begin_save(self, kind: rucksack.ItemKind) -> None:
+	def begin_save(self, i: int) -> None:
 		if self.new_entry is None:
 			location = Location.LOCAL if self.allow_local else Location.GLOBAL
-			self.new_entry = Entry(self.kr, location, "", kind, allow_local=self.allow_local, save_kinds=set())
-			self.new_entry.begin_rename()
-			self.new_entry.renamed.connect(self.end_save)
-			self.entry_list.addWidget(self.new_entry)
+			item = rucksack.Item(name="", data=self.possible_saves[i][0])
+			self.new_entry = (Entry(self.kr, location, item, allow_local=self.allow_local, possible_saves=[]), i)
+			self.new_entry[0].begin_rename()
+			self.new_entry[0].renamed.connect(self.end_save)
+			self.entry_list.addWidget(self.new_entry[0])
 		else:
-			self.new_entry.set_kind(kind)
-		self.new_entry.focus()
+			self.new_entry[0].set_kind(self.possible_saves[i][0])
+		self.new_entry[0].focus()
 
 	def end_save(self, location: Location, new_name: str) -> None:
 		assert self.new_entry is not None
 		if new_name:
-			self.add_new.emit(location, new_name, self.new_entry.kind)
-		self.new_entry.deleteLater()
+			self.add_new.emit(location, new_name, self.new_entry[1])
+		self.new_entry[0].deleteLater()
 		self.new_entry = None
 
 	def on_text_change(self, text: str) -> None:
@@ -501,11 +519,10 @@ class Dialog(QDialog):
 class Entry(QWidget):
 	deleted = pyqtSignal()
 	renamed = pyqtSignal(Location, str)
-	replaced = pyqtSignal(rucksack.ItemKind)
+	replaced = pyqtSignal(int)
 	chosen = pyqtSignal(bool)
 	location: Location
-	name: str
-	kind: rucksack.ItemKind
+	item: rucksack.Item
 
 	prefix_len: int
 	layout_: QHBoxLayout
@@ -513,28 +530,27 @@ class Entry(QWidget):
 	label: QLabel | QLineEdit
 	kr: Krita
 	is_global_button: QToolButton
-	save_kinds: set[rucksack.ItemKind]
+	possible_saves: list[tuple[rucksack.ItemData, bool]]
 
 	def __init__(
 		self,
 		kr: Krita,
 		location: Location,
-		name: str,
-		kind: rucksack.ItemKind,
+		item: rucksack.Item,
 		allow_local: bool,
-		save_kinds: set[rucksack.ItemKind],
+		possible_saves: list[tuple[rucksack.ItemData, bool]]
 	) -> None:
 		super().__init__()
 		self.kr = kr
-		self.save_kinds = save_kinds
+		self.possible_saves = possible_saves
 
 		self.location = location
-		self.name = name
 		self.layout_ = QHBoxLayout()
 		self.layout_.setContentsMargins(4, 0, 0, 0)
 
 		self.icon = QLabel()
-		self.set_kind(kind)
+		self.item = item
+		self.set_kind(item.data)
 		self.layout_.addWidget(self.icon)
 
 		self.label = QLabel()
@@ -558,22 +574,34 @@ class Entry(QWidget):
 
 		self.setLayout(self.layout_)
 
-	def set_kind(self, kind: rucksack.ItemKind) -> None:
-		self.kind = kind
-		def kind_icon(kind: rucksack.ItemKind) -> str:
-			match kind:
-				case rucksack.ItemKind.LAYER: return "paintLayer"
-				case rucksack.ItemKind.LAYER_STYLE: return "layer-style-enabled"
-				case rucksack.ItemKind.TEXT: return "draw-text"
-				case rucksack.ItemKind.VECTOR: return "vectorLayer"
-		self.icon.setPixmap(self.kr.icon(kind_icon(kind)).pixmap(16))
+	def set_kind(self, item: rucksack.ItemData) -> None:
+		self.item = rucksack.Item(name=self.item.name, data=item)
+		def icon(item: rucksack.ItemData) -> str:
+			match item:
+				case rucksack.Node(kind=kind):
+					match kind:
+						case rucksack.NodeKind.LAYER: return "paintLayer"
+						case rucksack.NodeKind.LAYER_FILE: return "fileLayer"
+						case rucksack.NodeKind.LAYER_FILL: return "fillLayer"
+						case rucksack.NodeKind.LAYER_FILTER: return "filterLayer"
+						case rucksack.NodeKind.LAYER_GROUP: return "groupLayer"
+						case rucksack.NodeKind.LAYER_VECTOR: return "vectorLayer"
+						case rucksack.NodeKind.MASK_COLORIZE: return "colorizeMask"
+						case rucksack.NodeKind.MASK_FILTER: return "filterMask"
+						case rucksack.NodeKind.MASK_SELECTION: return "selectionMask"
+						case rucksack.NodeKind.MASK_TRANSFORM: return "transformMask"
+						case rucksack.NodeKind.MASK_TRANSPARENCY: return "transparencyMask"
+				case rucksack.Vector(is_text=is_text):
+					return "draw-text" if is_text else "krita_tool_freehandvector"
+				case rucksack.LayerStyle(): return "layer-style-enabled"
+		self.icon.setPixmap(self.kr.icon(icon(item)).pixmap(16))
 
 	def on_global_button_click(self):
 		self.update_global_button()
 		if isinstance(self.label, QLabel):
 			self.is_global_button.setEnabled(False)
 			is_global = self.is_global_button.isChecked()
-			self.renamed.emit(Location.GLOBAL if is_global else Location.LOCAL, self.name)
+			self.renamed.emit(Location.GLOBAL if is_global else Location.LOCAL, self.item.name)
 
 	def update_global_button(self):
 		is_global = self.is_global_button.isChecked()
@@ -581,7 +609,7 @@ class Entry(QWidget):
 
 	def set_prefix_len(self, prefix_len: int) -> None:
 		self.prefix_len = prefix_len
-		name = self.name
+		name = self.item.name
 		self.label.setText(f"<b>{html.escape(name[:prefix_len])}</b>{html.escape(name[prefix_len:])}")
 
 	def show_context_menu(self, position: QPoint) -> None:
@@ -593,25 +621,28 @@ class Entry(QWidget):
 		rename_action = menu.addAction("Rename")
 		delete_action = menu.addAction("Delete")
 		menu.addSeparator()
-		save_kinds = [
-			(rucksack.ItemKind.LAYER, menu.addAction("Replace with layer")),
-			(rucksack.ItemKind.LAYER_STYLE, menu.addAction("Replace with layer style")),
-			(rucksack.ItemKind.VECTOR, menu.addAction("Replace with vector")),
-			(rucksack.ItemKind.TEXT, menu.addAction("Replace with text")),
-		]
-		for kind, action in save_kinds: action.setEnabled(kind in self.save_kinds)
+
+		save_actions = []
+		for item, enabled in self.possible_saves:
+			desc = save_desc(item).replace("&", "")
+			action = menu.addAction("Replace with " + desc)
+			save_actions.append(action)
+			action.setEnabled(enabled)
 
 		action = menu.exec_(self.mapToGlobal(position))
 		if action == use_action: self.chosen.emit(False)
 		elif action == use_linger_action: self.chosen.emit(True)
 		elif action == rename_action: self.begin_rename()
 		elif action == delete_action: self.deleted.emit()
-		else: self.replaced.emit(next(k for k, a in save_kinds if a == action))
+		else:
+			try: i = next(i for i, a in enumerate(save_actions) if a == action)
+			except StopIteration: return
+			self.replaced.emit(i)
 
 	def begin_rename(self) -> None:
 		self.label.deleteLater()
 		self.label = LineEditCaptureEscape()
-		self.label.setText(self.name)
+		self.label.setText(self.item.name)
 		self.label.returnPressed.connect(lambda: self.end_rename(cancel=False))
 		self.label.escape.connect(lambda: self.end_rename(cancel=True))
 		self.label.selectAll()
@@ -648,8 +679,8 @@ class Entry(QWidget):
 
 	def on_text_change(self, text: str) -> bool:
 		if isinstance(self.label, QLineEdit): return False
-		if self.prefix_len != 0 and text == self.name[:self.prefix_len]: return True
-		self.label.setEnabled(self.name.startswith(text))
+		if self.prefix_len != 0 and text == self.item.name[:self.prefix_len]: return True
+		self.label.setEnabled(self.item.name.startswith(text))
 		return False
 
 	# Applies stylesheets to the current widget.
@@ -669,6 +700,12 @@ class Entry(QWidget):
 				self.chosen.emit(True)
 				return
 		super().mousePressEvent(event)
+
+def save_desc(item: rucksack.ItemData) -> str:
+	match item:
+		case rucksack.Node(kind=kind): return "&mask" if kind.is_mask() else "&layer"
+		case rucksack.Vector(is_text=is_text): return "&text" if is_text else "&vector"
+		case rucksack.LayerStyle(): return "layer &style"
 
 class LineEditCaptureEscape(QLineEdit):
 	escape = pyqtSignal()
