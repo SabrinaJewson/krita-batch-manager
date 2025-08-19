@@ -279,14 +279,20 @@ class Driver:
 		return cursor.addChildNode(node, previous)
 
 	def insert_svg(self, svg: str, is_text: bool) -> None:
+		made_new_layer = False
+
 		if isinstance(self.active_node, krita.VectorLayer):
 			node = self.active_node
-		elif is_text and (ts_node := self.doc.nodeByName("text")) is not None and isinstance(ts_node, krita.VectorLayer):
-			node = ts_node
+		elif is_text and (
+			(text_node := self.doc.nodeByName("text")) is not None
+			and isinstance(text_node, krita.VectorLayer)
+		):
+			node = text_node
 		else:
 			if (new_node := self.doc.createVectorLayer("text" if is_text else "Vector layer")) is None:
 				self.error("could not make vector layer")
 				return
+			made_new_layer = True
 			if not self.add_node_nearby(new_node): return
 			node = new_node
 		self.doc.setActiveNode(node)
@@ -320,9 +326,11 @@ class Driver:
 		for shape in shapes: shape.setPosition(shape.position() + offset)
 
 		for s in node.shapes(): s.deselect()
-		for shape in shapes:
-			shape.select()
-			shape.update() # makes the object actually appear on canvas
+		for shape in shapes: shape.update() # makes the object actually appear on canvas
+
+		# Somehow, it doesn’t work otherwise.
+		if made_new_layer: QTimer.singleShot(100, lambda: self.do_select(shapes))
+		else: self.do_select(shapes)
 
 		if is_text:
 			# Open the “Edit Text” popup.
@@ -339,6 +347,9 @@ class Driver:
 			# Select the contents of the text field by going through Edit → Select all.
 			edit_menu = unwrap(edit_text_win.findChild(QMenu, "edit"))
 			next(a for a in edit_menu.actions() if a.objectName() == "edit_select_all").trigger()
+
+	def do_select(self, shapes: list[krita.Shape]) -> None:
+		for shape in shapes: shape.select()
 
 	def error(self, msg: str) -> None:
 		qWarning(f"{msg}")
