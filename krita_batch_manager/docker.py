@@ -450,6 +450,7 @@ class Widget(QWidget):
 		self.export_in_progress = True
 		self.update_export_state()
 		compressors = []
+		updated = 0
 
 		try:
 			for src_path in src_paths:
@@ -497,6 +498,7 @@ class Widget(QWidget):
 							self.floating_message("dialog-warning", f"could not run oxipng: {str(e)}")
 							return
 
+					updated += 1
 					qInfo(f"exported to {dst_path}")
 				finally:
 					if opened_new: doc.close()
@@ -508,7 +510,7 @@ class Widget(QWidget):
 			finally:
 				self.export_in_progress = False
 				self.update_export_state()
-		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s)")
+		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s) (updated {updated})")
 
 	def delete_file(self, file_paths: list[Path]) -> None:
 		if QMessageBox.question(
