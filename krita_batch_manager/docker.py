@@ -200,7 +200,7 @@ class Widget(QWidget):
 		if self.current_dir is not None:
 			try:
 				files = sorted(
-					[f for f in os.listdir(self.current_dir) if f.endswith(".kra")],
+					[f for f in os.listdir(self.current_dir) if Path(f).suffix in image_formats],
 					key=lambda s: s.lower()
 				)
 			except Exception as e:
@@ -294,12 +294,9 @@ class Widget(QWidget):
 		if self.current_dir is None: return
 		current_doc = self.kr.activeDocument()
 
-		files, _ = QFileDialog.getOpenFileNames(
-			self,
-			"Select Images to Import",
-			"",
-			"Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff)"
-		)
+		title = "Select Images to Import"
+		image_format_list = " ".join(f"*{ext}" for ext in image_formats)
+		files, _ = QFileDialog.getOpenFileNames(self, title, "", f"Images ({image_format_list})")
 		if not files: return
 
 		options_dialog = QDialog(self)
@@ -618,6 +615,21 @@ class Widget(QWidget):
 		if (win := self.kr.activeWindow()) is not None:
 			if (view := win.activeView()) is not None:
 				view.showFloatingMessage(msg, self.kr.icon(icon), 2000, 1)
+
+image_formats: list[str] = [
+	".avif",
+	".bmp",
+	".heif",
+	".jpeg",
+	".jpg",
+	".jxl",
+	".kra",
+	".ora",
+	".png",
+	".psd",
+	".tiff",
+	".webp",
+]
 
 class PushButtonCaptureAlt(QPushButton):
 	clicked_alt = pyqtSignal()
