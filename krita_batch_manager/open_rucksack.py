@@ -1,7 +1,7 @@
 from __future__ import annotations
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import *
-from PyQt5.QtGui import * # type: ignore[assignment]
+from PyQt5.QtGui import *  # type: ignore[assignment]
 from PyQt5.QtWidgets import *
 from krita import Krita
 from enum import Enum
@@ -17,11 +17,17 @@ import shutil
 from . import rucksack
 from .rucksack import Rucksack
 
-def run(kr: Krita) -> None:
-	try: Driver(kr)
-	except IgnoredException: pass
 
-class IgnoredException(Exception): pass
+def run(kr: Krita) -> None:
+	try:
+		Driver(kr)
+	except IgnoredException:
+		pass
+
+
+class IgnoredException(Exception):
+	pass
+
 
 class Driver:
 	kr: Krita
@@ -42,19 +48,29 @@ class Driver:
 
 		self.kr = kr
 
-		if (win := kr.activeWindow()) is None: qWarning("no active window"); raise IgnoredException
+		if (win := kr.activeWindow()) is None:
+			qWarning("no active window")
+			raise IgnoredException
 		self.win = win
 
-		if (view := win.activeView()) is None: qWarning("no active view"); raise IgnoredException
+		if (view := win.activeView()) is None:
+			qWarning("no active view")
+			raise IgnoredException
 		self.view = view
 
-		if (doc := kr.activeDocument()) is None: self.error("no active document"); raise IgnoredException
+		if (doc := kr.activeDocument()) is None:
+			self.error("no active document")
+			raise IgnoredException
 		self.doc = doc
 
-		if (active_node := doc.activeNode()) is None: self.error("no active node"); raise IgnoredException
+		if (active_node := doc.activeNode()) is None:
+			self.error("no active node")
+			raise IgnoredException
 		self.active_node = active_node
 
-		if (qwin := win.qwindow()) is None: self.error("no qwin"); raise IgnoredException
+		if (qwin := win.qwindow()) is None:
+			self.error("no qwin")
+			raise IgnoredException
 		self.qwin = qwin
 
 		try:
@@ -68,8 +84,14 @@ class Driver:
 					if path.exists():
 						found = path
 						break
-				self.local = Rucksack(found if found is not None else (file_path.parent / "krita-rucksack"))
-		except Exception as e: self.error(str(e)); raise IgnoredException
+				self.local = Rucksack(
+					found
+					if found is not None
+					else (file_path.parent / "krita-rucksack")
+				)
+		except Exception as e:
+			self.error(str(e))
+			raise IgnoredException
 
 		# `filename` is a placeholder; it will be filled in later.
 		save_item_node = rucksack.Node(filename=0, kind=node_kind_of_node(active_node))
@@ -79,14 +101,16 @@ class Driver:
 		is_text = False
 		if isinstance(active_node, krita.VectorLayer):
 			for shape in active_node.shapes():
-				if not shape.isSelected(): continue
+				if not shape.isSelected():
+					continue
 
 				old_transform = shape.transformation()
 				t = shape.absoluteTransformation()
 				try:
 					shape.setTransformation(t)
 					svg = shape.toSvg()
-				finally: shape.setTransformation(old_transform)
+				finally:
+					shape.setTransformation(old_transform)
 
 				shape_is_text = shape.type() == "KoSvgTextShapeID"
 				# For some reason, `toSvg()` ignores text transforms. So we do it manually.
@@ -95,20 +119,28 @@ class Driver:
 				if shape_is_text:
 					prefix = "<text "
 					assert svg.startswith(prefix)
-					new_svg = f"{prefix}transform=\"matrix("
+					new_svg = f'{prefix}transform="matrix('
 					new_svg += f"{t.m11()} {t.m12()} "
 					new_svg += f"{t.m21()} {t.m22()} "
 					new_svg += f"{t.m31()} {t.m32()}"
-					svg = new_svg + ")\" " + svg[len(prefix):]
+					svg = new_svg + ')" ' + svg[len(prefix) :]
 				is_text = not shapes_svg and shape_is_text
 				shapes_svg += svg
-		self.possible_saves.append((rucksack.Vector(shapes_svg, is_text=False), bool(shapes_svg)))
-		self.possible_saves.append((rucksack.Vector(shapes_svg, is_text=True), bool(shapes_svg) and is_text))
+		self.possible_saves.append(
+			(rucksack.Vector(shapes_svg, is_text=False), bool(shapes_svg))
+		)
+		self.possible_saves.append(
+			(rucksack.Vector(shapes_svg, is_text=True), bool(shapes_svg) and is_text)
+		)
 
 		layer_style = active_node.layerStyleToAsl()
-		self.possible_saves.append((rucksack.LayerStyle(layer_style), bool(layer_style)))
+		self.possible_saves.append(
+			(rucksack.LayerStyle(layer_style), bool(layer_style))
+		)
 
-		self.dialog = Dialog(kr, allow_local=self.local is not None, possible_saves=self.possible_saves)
+		self.dialog = Dialog(
+			kr, allow_local=self.local is not None, possible_saves=self.possible_saves
+		)
 		self.update_item_list()
 		self.dialog.add_new.connect(self.on_add_new)
 		self.dialog.delete.connect(self.on_delete)
@@ -124,8 +156,11 @@ class Driver:
 
 	def at(self, location: Location) -> Rucksack:
 		match location:
-			case Location.GLOBAL: return self.global_
-			case Location.LOCAL: assert self.local is not None; return self.local
+			case Location.GLOBAL:
+				return self.global_
+			case Location.LOCAL:
+				assert self.local is not None
+				return self.local
 
 	def on_add_new(self, location: Location, name: str, save_i: int) -> bool:
 		qInfo(f"adding new: {name}")
@@ -149,25 +184,36 @@ class Driver:
 				self.doc.resolution(),
 			)
 			if d is None or (root_node := d.rootNode()) is None:
-				self.error("could not create saved layer document"); return False
+				self.error("could not create saved layer document")
+				return False
 
 			try:
 				bg_node = d.topLevelNodes()[0]
-				if not (bg_node if node_kind.is_mask() else root_node).addChildNode(cloned, None):
-					self.error("could not add child node to saved layer document"); return False
-				if not node_kind.is_mask(): bg_node.remove()
+				if not (bg_node if node_kind.is_mask() else root_node).addChildNode(
+					cloned, None
+				):
+					self.error("could not add child node to saved layer document")
+					return False
+				if not node_kind.is_mask():
+					bg_node.remove()
 				i, path = target.gen_layer_path()
-				try: path.parent.mkdir(parents=True, exist_ok=True)
-				except Exception: pass
+				try:
+					path.parent.mkdir(parents=True, exist_ok=True)
+				except Exception:
+					pass
 				if not d.saveAs(str(path)):
-					self.error("could not save saved layer document"); return False
+					self.error("could not save saved layer document")
+					return False
 				data = rucksack.Node(i, node_kind)
 			finally:
 				d.close()
 
 		new_items = [*target.items, rucksack.Item(name, data)]
-		try: rucksack.write(target.json_path, new_items)
-		except Exception as e: self.error(str(e)); return False
+		try:
+			rucksack.write(target.json_path, new_items)
+		except Exception as e:
+			self.error(str(e))
+			return False
 		target.items = new_items
 		self.update_item_list()
 
@@ -178,26 +224,41 @@ class Driver:
 		item = target.items[i]
 		qInfo(f"deleting {item.name}")
 
-		new_items = [*target.items[:i], *target.items[i + 1:]]
-		try: rucksack.write(target.json_path, new_items)
-		except Exception as e: self.error(str(e)); return
+		new_items = [*target.items[:i], *target.items[i + 1 :]]
+		try:
+			rucksack.write(target.json_path, new_items)
+		except Exception as e:
+			self.error(str(e))
+			return
 		target.items = new_items
 		self.update_item_list()
 
 		if isinstance(item.data, rucksack.Node):
 			path = target.node_path(item.data.filename)
-			try: path.unlink(missing_ok=True)
-			except Exception as e: self.error(str(e)); return
+			try:
+				path.unlink(missing_ok=True)
+			except Exception as e:
+				self.error(str(e))
+				return
 
-	def on_rename(self, location: Location, i: int, new_location: Location, name: str) -> None:
+	def on_rename(
+		self, location: Location, i: int, new_location: Location, name: str
+	) -> None:
 		src_rucksack = self.at(location)
 		item_data = src_rucksack.items[i].data
 
 		qInfo(f"renaming {src_rucksack.items[i].name} to {name}")
 		if location == new_location:
-			new_items = [*src_rucksack.items[:i], rucksack.Item(name, item_data), *src_rucksack.items[i + 1:]]
-			try: rucksack.write(src_rucksack.json_path, new_items)
-			except Exception as e: self.error(str(e)); return
+			new_items = [
+				*src_rucksack.items[:i],
+				rucksack.Item(name, item_data),
+				*src_rucksack.items[i + 1 :],
+			]
+			try:
+				rucksack.write(src_rucksack.json_path, new_items)
+			except Exception as e:
+				self.error(str(e))
+				return
 			src_rucksack.items = new_items
 			self.update_item_list()
 			return
@@ -212,14 +273,20 @@ class Driver:
 				try:
 					dst_path.hardlink_to(src_path)
 				except OSError as e:
-					if e.errno != errno.EXDEV: raise e
+					if e.errno != errno.EXDEV:
+						raise e
 					shutil.copy(src_path, dst_path)
-			except Exception as e: self.error(str(e)); return
+			except Exception as e:
+				self.error(str(e))
+				return
 			item_data = rucksack.Node(j, item_data.kind)
 
 		new_items = [*new_rucksack.items, rucksack.Item(name, item_data)]
-		try: rucksack.write(new_rucksack.json_path, new_items)
-		except Exception as e: self.error(str(e)); return
+		try:
+			rucksack.write(new_rucksack.json_path, new_items)
+		except Exception as e:
+			self.error(str(e))
+			return
 		new_rucksack.items = new_items
 
 		self.on_delete(location, i)
@@ -232,8 +299,11 @@ class Driver:
 	def on_refresh(self, location: Location) -> None:
 		qInfo("refreshing")
 		target = self.at(location)
-		try: target.items = rucksack.read(target.json_path)
-		except Exception as e: self.error(str(e)); return
+		try:
+			target.items = rucksack.read(target.json_path)
+		except Exception as e:
+			self.error(str(e))
+			return
 		self.update_item_list()
 
 	def on_chosen(self, location: Location, i: int) -> None:
@@ -255,13 +325,21 @@ class Driver:
 
 		try:
 			if is_mask and len(doc.topLevelNodes()) != 1:
-				self.error("saved mask file had wrong number of layers"); return
-			to_copy = doc.topLevelNodes()[0].childNodes() if is_mask else doc.topLevelNodes()
-			if not to_copy: self.error("found no nodes to insert"); return
+				self.error("saved mask file had wrong number of layers")
+				return
+			to_copy = (
+				doc.topLevelNodes()[0].childNodes() if is_mask else doc.topLevelNodes()
+			)
+			if not to_copy:
+				self.error("found no nodes to insert")
+				return
 
 			for node in to_copy:
-				if (cloned_node := node.clone()) is None: self.error("could not clone node"); return
-				if not self.add_node_nearby(cloned_node): return
+				if (cloned_node := node.clone()) is None:
+					self.error("could not clone node")
+					return
+				if not self.add_node_nearby(cloned_node):
+					return
 		finally:
 			doc.close()
 
@@ -274,7 +352,8 @@ class Driver:
 		previous = None
 		for _ in range(int(active_is_mask) - int(node_is_mask) + 1):
 			if (parent := cursor.parentNode()) is None:
-				self.error("node has no parent"); return False
+				self.error("node has no parent")
+				return False
 			cursor, previous = parent, cursor
 		return cursor.addChildNode(node, previous)
 
@@ -289,11 +368,16 @@ class Driver:
 		):
 			node = text_node
 		else:
-			if (new_node := self.doc.createVectorLayer("text" if is_text else "Vector layer")) is None:
+			if (
+				new_node := self.doc.createVectorLayer(
+					"text" if is_text else "Vector layer"
+				)
+			) is None:
 				self.error("could not make vector layer")
 				return
 			made_new_layer = True
-			if not self.add_node_nearby(new_node): return
+			if not self.add_node_nearby(new_node):
+				return
 			node = new_node
 		self.doc.setActiveNode(node)
 
@@ -301,15 +385,19 @@ class Driver:
 
 		# In `addShapesFromSvg`, Krita will automatically undo the effects of DPI, treating those
 		# coordinates as pixels. But we want to treat them as points, so we redo the effect.
-		scale = QTransform.fromScale(self.doc.resolution() / 72, self.doc.resolution() / 72)
+		scale = QTransform.fromScale(
+			self.doc.resolution() / 72, self.doc.resolution() / 72
+		)
 		for shape in shapes:
-			shape.setTransformation(shape.transformation() * scale) # type: ignore[operator]
+			shape.setTransformation(shape.transformation() * scale)  # type: ignore[operator]
 
 		shapes_bounding_box = None
 		for shape in shapes:
 			bounding_box = shape.boundingBox()
-			if shapes_bounding_box is None: shapes_bounding_box = bounding_box
-			else: shapes_bounding_box = shapes_bounding_box.united(bounding_box)
+			if shapes_bounding_box is None:
+				shapes_bounding_box = bounding_box
+			else:
+				shapes_bounding_box = shapes_bounding_box.united(bounding_box)
 		assert shapes_bounding_box is not None
 
 		# Find the centre of the canvas in points.
@@ -317,26 +405,35 @@ class Driver:
 		# - flakeToDocumentTransform applies zoom to screen pixels.
 		# - flakeToCanvasTransform converts vector coordinates into pixels, but not taking into
 		#   account zoom.
-		t = self.view.flakeToCanvasTransform().inverted()[0] * self.view.flakeToDocumentTransform() # type: ignore[operator]
+		t = (
+			self.view.flakeToCanvasTransform().inverted()[0]
+			* self.view.flakeToDocumentTransform()  # type: ignore[operator]
+		)
 		canvas = unwrap(unwrap(self.qwin.centralWidget()).findChild(QOpenGLWidget))
 		centre = t.map(QPointF(canvas.width(), canvas.height()) / 2)
 
 		# Centre the shapes to the centre of the canvas.
 		offset = centre - shapes_bounding_box.center()
-		for shape in shapes: shape.setPosition(shape.position() + offset)
+		for shape in shapes:
+			shape.setPosition(shape.position() + offset)
 
-		for s in node.shapes(): s.deselect()
-		for shape in shapes: shape.update() # makes the object actually appear on canvas
+		for s in node.shapes():
+			s.deselect()
+		for shape in shapes:
+			shape.update()  # makes the object actually appear on canvas
 
 		# Somehow, it doesn’t work otherwise.
-		if made_new_layer: QTimer.singleShot(100, lambda: self.do_select(shapes))
-		else: self.do_select(shapes)
+		if made_new_layer:
+			QTimer.singleShot(100, lambda: self.do_select(shapes))
+		else:
+			self.do_select(shapes)
 
 		if is_text:
 			# Open the “Edit Text” popup.
 			unwrap(self.kr.action("SvgTextTool")).trigger()
-			unwrap(unwrap(self.qwin.findChild(QDockWidget, "sharedtooldocker")).findChild(QPushButton)).click()
-			QApplication.processEvents() # wait for the window to open
+			tool_docker = unwrap(self.qwin.findChild(QDockWidget, "sharedtooldocker"))
+			unwrap(tool_docker.findChild(QPushButton)).click()
+			QApplication.processEvents()  # wait for the window to open
 
 			# Find the newly-created window, enter “Rich text” mode and focus the text field
 			edit_text_win = QApplication.activeWindow()
@@ -346,44 +443,62 @@ class Driver:
 
 			# Select the contents of the text field by going through Edit → Select all.
 			edit_menu = unwrap(edit_text_win.findChild(QMenu, "edit"))
-			next(a for a in edit_menu.actions() if a.objectName() == "edit_select_all").trigger()
+			next(
+				a for a in edit_menu.actions() if a.objectName() == "edit_select_all"
+			).trigger()
 
 	def do_select(self, shapes: list[krita.Shape]) -> None:
-		for shape in shapes: shape.select()
+		for shape in shapes:
+			shape.select()
 
 	def error(self, msg: str) -> None:
-		qWarning(f"{msg}")
+		qWarning(msg)
 		self.view.showFloatingMessage(msg, self.kr.icon("dialog-warning"), 2000, 1)
 
+
 def node_kind_of_node(node: krita.Node) -> rucksack.NodeKind:
-	if isinstance(node, krita.FileLayer): return rucksack.NodeKind.LAYER_FILE
-	if isinstance(node, krita.FillLayer): return rucksack.NodeKind.LAYER_FILL
-	if isinstance(node, krita.FilterLayer): return rucksack.NodeKind.LAYER_FILTER
-	if isinstance(node, krita.GroupLayer): return rucksack.NodeKind.LAYER_GROUP
-	if isinstance(node, krita.VectorLayer): return rucksack.NodeKind.LAYER_VECTOR
-	if isinstance(node, krita.ColorizeMask): return rucksack.NodeKind.MASK_COLORIZE
-	if isinstance(node, krita.FilterMask): return rucksack.NodeKind.MASK_FILTER
-	if isinstance(node, krita.SelectionMask): return rucksack.NodeKind.MASK_SELECTION
-	if isinstance(node, krita.TransformMask): return rucksack.NodeKind.MASK_TRANSFORM
-	if isinstance(node, krita.TransparencyMask): return rucksack.NodeKind.MASK_TRANSPARENCY
+	if isinstance(node, krita.FileLayer):
+		return rucksack.NodeKind.LAYER_FILE
+	if isinstance(node, krita.FillLayer):
+		return rucksack.NodeKind.LAYER_FILL
+	if isinstance(node, krita.FilterLayer):
+		return rucksack.NodeKind.LAYER_FILTER
+	if isinstance(node, krita.GroupLayer):
+		return rucksack.NodeKind.LAYER_GROUP
+	if isinstance(node, krita.VectorLayer):
+		return rucksack.NodeKind.LAYER_VECTOR
+	if isinstance(node, krita.ColorizeMask):
+		return rucksack.NodeKind.MASK_COLORIZE
+	if isinstance(node, krita.FilterMask):
+		return rucksack.NodeKind.MASK_FILTER
+	if isinstance(node, krita.SelectionMask):
+		return rucksack.NodeKind.MASK_SELECTION
+	if isinstance(node, krita.TransformMask):
+		return rucksack.NodeKind.MASK_TRANSFORM
+	if isinstance(node, krita.TransparencyMask):
+		return rucksack.NodeKind.MASK_TRANSPARENCY
 	return rucksack.NodeKind.LAYER
+
 
 class Location(Enum):
 	LOCAL = enum.auto()
 	GLOBAL = enum.auto()
 
+
 class Dialog(QDialog):
-	add_new = pyqtSignal(Location, str, int) # location, name, chosen save
-	delete = pyqtSignal(Location, int) # location, index
-	rename = pyqtSignal(Location, int, Location, str) # location, index, new location, new name
-	replace = pyqtSignal(Location, int, int) # location, index, chosen save
+	add_new = pyqtSignal(Location, str, int)  # location, name, chosen save
+	delete = pyqtSignal(Location, int)  # location, index
+	rename = pyqtSignal(
+		Location, int, Location, str
+	)  # location, index, new location, new name
+	replace = pyqtSignal(Location, int, int)  # location, index, chosen save
 	refresh = pyqtSignal(Location)
-	chosen = pyqtSignal(Location, int) # location, index
+	chosen = pyqtSignal(Location, int)  # location, index
 
 	text_box: LineEditCaptureEscape
-	entries: list[tuple[Entry, int]] = [] # entries and their original index
+	entries: list[tuple[Entry, int]] = []  # entries and their original index
 	no_entries_text: QLabel | None = None
-	new_entry: tuple[Entry, int] | None = None # entry, chosen save
+	new_entry: tuple[Entry, int] | None = None  # entry, chosen save
 	entry_list: QVBoxLayout
 	allow_local: bool
 	possible_saves: list[tuple[rucksack.ItemData, bool]]
@@ -426,7 +541,9 @@ class Dialog(QDialog):
 
 		self.setLayout(layout)
 
-	def set_items(self, global_items: list[rucksack.Item], local_items: list[rucksack.Item]) -> None:
+	def set_items(
+		self, global_items: list[rucksack.Item], local_items: list[rucksack.Item]
+	) -> None:
 		for entry, _ in self.entries:
 			entry.deleteLater()
 		if self.no_entries_text is not None:
@@ -436,40 +553,50 @@ class Dialog(QDialog):
 		self.text_box.setFocus()
 
 		self.entries = [
-			(Entry(
-				self.kr,
-				location,
-				item,
-				allow_local=self.allow_local,
-				possible_saves=self.possible_saves,
-			), i)
+			(
+				Entry(
+					self.kr,
+					location,
+					item,
+					allow_local=self.allow_local,
+					possible_saves=self.possible_saves,
+				),
+				i,
+			)
 			for location, i, item in (
 				*((Location.GLOBAL, i, item) for i, item in enumerate(global_items)),
 				*((Location.LOCAL, i, item) for i, item in enumerate(local_items)),
 			)
-		];
+		]
 		self.entries.sort(key=lambda e: e[0].item.name)
 
 		for i, (entry, orig_i) in enumerate(self.entries):
 			before = self.entries[i - 1][0].item.name if 0 < i else ""
-			after = self.entries[i + 1][0].item.name if i + 1 < len(self.entries) else ""
+			after = (
+				self.entries[i + 1][0].item.name if i + 1 < len(self.entries) else ""
+			)
 			prefix_len = 0
 			for char_index, char in enumerate(entry.item.name):
-				if ((len(before) <= char_index or before[char_index] != char) and
-					(len(after) <= char_index or after[char_index] != char)):
+				if (len(before) <= char_index or before[char_index] != char) and (
+					len(after) <= char_index or after[char_index] != char
+				):
 					prefix_len = char_index + 1
 					break
 			entry.set_prefix_len(prefix_len)
-			entry.deleted.connect(lambda i=orig_i,e=entry: self.delete.emit(e.location, i))
+			entry.deleted.connect(
+				lambda i=orig_i, e=entry: self.delete.emit(e.location, i)
+			)
 			entry.renamed.connect(lambda *args, i=i: self.rename_helper(i, *args))
 			entry.chosen.connect(lambda *args, i=i: self.chosen_helper(i, *args))
-			entry.replaced.connect(lambda j,i=orig_i,e=entry: self.replace.emit(e.location, i, j))
+			entry.replaced.connect(
+				lambda j, i=orig_i, e=entry: self.replace.emit(e.location, i, j)
+			)
 			self.entry_list.addWidget(entry)
 
 		if not self.entries:
 			self.no_entries_text = QLabel()
 			self.no_entries_text.setText("Rucksack is empty…")
-			self.no_entries_text.setStyleSheet("color:grey;font-style:italic");
+			self.no_entries_text.setStyleSheet("color:grey;font-style:italic")
 			self.entry_list.addWidget(self.no_entries_text)
 
 	def rename_helper(self, i: int, location: Location, new_name: str) -> None:
@@ -482,13 +609,23 @@ class Dialog(QDialog):
 	def chosen_helper(self, i: int, linger: bool) -> None:
 		entry, orig_i = self.entries[i]
 		self.chosen.emit(entry.location, orig_i)
-		if not linger: self.accept()
+		if not linger:
+			self.accept()
 
 	def begin_save(self, i: int) -> None:
 		if self.new_entry is None:
 			location = Location.LOCAL if self.allow_local else Location.GLOBAL
 			item = rucksack.Item(name="", data=self.possible_saves[i][0])
-			self.new_entry = (Entry(self.kr, location, item, allow_local=self.allow_local, possible_saves=[]), i)
+			self.new_entry = (
+				Entry(
+					self.kr,
+					location,
+					item,
+					allow_local=self.allow_local,
+					possible_saves=[],
+				),
+				i,
+			)
 			self.new_entry[0].begin_rename()
 			self.new_entry[0].renamed.connect(self.end_save)
 			self.entry_list.addWidget(self.new_entry[0])
@@ -527,6 +664,7 @@ class Dialog(QDialog):
 			return
 		super().keyReleaseEvent(e)
 
+
 class Entry(QWidget):
 	deleted = pyqtSignal()
 	renamed = pyqtSignal(Location, str)
@@ -549,7 +687,7 @@ class Entry(QWidget):
 		location: Location,
 		item: rucksack.Item,
 		allow_local: bool,
-		possible_saves: list[tuple[rucksack.ItemData, bool]]
+		possible_saves: list[tuple[rucksack.ItemData, bool]],
 	) -> None:
 		super().__init__()
 		self.kr = kr
@@ -587,24 +725,38 @@ class Entry(QWidget):
 
 	def set_kind(self, item: rucksack.ItemData) -> None:
 		self.item = rucksack.Item(name=self.item.name, data=item)
+
 		def icon(item: rucksack.ItemData) -> str:
 			match item:
 				case rucksack.Node(kind=kind):
 					match kind:
-						case rucksack.NodeKind.LAYER: return "paintLayer"
-						case rucksack.NodeKind.LAYER_FILE: return "fileLayer"
-						case rucksack.NodeKind.LAYER_FILL: return "fillLayer"
-						case rucksack.NodeKind.LAYER_FILTER: return "filterLayer"
-						case rucksack.NodeKind.LAYER_GROUP: return "groupLayer"
-						case rucksack.NodeKind.LAYER_VECTOR: return "vectorLayer"
-						case rucksack.NodeKind.MASK_COLORIZE: return "colorizeMask"
-						case rucksack.NodeKind.MASK_FILTER: return "filterMask"
-						case rucksack.NodeKind.MASK_SELECTION: return "selectionMask"
-						case rucksack.NodeKind.MASK_TRANSFORM: return "transformMask"
-						case rucksack.NodeKind.MASK_TRANSPARENCY: return "transparencyMask"
+						case rucksack.NodeKind.LAYER:
+							return "paintLayer"
+						case rucksack.NodeKind.LAYER_FILE:
+							return "fileLayer"
+						case rucksack.NodeKind.LAYER_FILL:
+							return "fillLayer"
+						case rucksack.NodeKind.LAYER_FILTER:
+							return "filterLayer"
+						case rucksack.NodeKind.LAYER_GROUP:
+							return "groupLayer"
+						case rucksack.NodeKind.LAYER_VECTOR:
+							return "vectorLayer"
+						case rucksack.NodeKind.MASK_COLORIZE:
+							return "colorizeMask"
+						case rucksack.NodeKind.MASK_FILTER:
+							return "filterMask"
+						case rucksack.NodeKind.MASK_SELECTION:
+							return "selectionMask"
+						case rucksack.NodeKind.MASK_TRANSFORM:
+							return "transformMask"
+						case rucksack.NodeKind.MASK_TRANSPARENCY:
+							return "transparencyMask"
 				case rucksack.Vector(is_text=is_text):
 					return "draw-text" if is_text else "krita_tool_freehandvector"
-				case rucksack.LayerStyle(): return "layer-style-enabled"
+				case rucksack.LayerStyle():
+					return "layer-style-enabled"
+
 		self.icon.setPixmap(self.kr.icon(icon(item)).pixmap(16))
 
 	def on_global_button_click(self):
@@ -612,19 +764,28 @@ class Entry(QWidget):
 		if isinstance(self.label, QLabel):
 			self.is_global_button.setEnabled(False)
 			is_global = self.is_global_button.isChecked()
-			self.renamed.emit(Location.GLOBAL if is_global else Location.LOCAL, self.item.name)
+			self.renamed.emit(
+				Location.GLOBAL if is_global else Location.LOCAL, self.item.name
+			)
 
 	def update_global_button(self):
 		is_global = self.is_global_button.isChecked()
-		self.is_global_button.setToolTip("This item is shared across all files" if is_global else "This item is local to the folder")
+		self.is_global_button.setToolTip(
+			"This item is shared across all files"
+			if is_global
+			else "This item is local to the folder"
+		)
 
 	def set_prefix_len(self, prefix_len: int) -> None:
 		self.prefix_len = prefix_len
 		name = self.item.name
-		self.label.setText(f"<b>{html.escape(name[:prefix_len])}</b>{html.escape(name[prefix_len:])}")
+		self.label.setText(
+			f"<b>{html.escape(name[:prefix_len])}</b>{html.escape(name[prefix_len:])}"
+		)
 
 	def show_context_menu(self, position: QPoint) -> None:
-		if isinstance(self.label, QLineEdit): return
+		if isinstance(self.label, QLineEdit):
+			return
 
 		menu = QMenu()
 		use_action = menu.addAction("Use")
@@ -641,13 +802,19 @@ class Entry(QWidget):
 			action.setEnabled(enabled)
 
 		action = menu.exec_(self.mapToGlobal(position))
-		if action == use_action: self.chosen.emit(False)
-		elif action == use_linger_action: self.chosen.emit(True)
-		elif action == rename_action: self.begin_rename()
-		elif action == delete_action: self.deleted.emit()
+		if action == use_action:
+			self.chosen.emit(False)
+		elif action == use_linger_action:
+			self.chosen.emit(True)
+		elif action == rename_action:
+			self.begin_rename()
+		elif action == delete_action:
+			self.deleted.emit()
 		else:
-			try: i = next(i for i, a in enumerate(save_actions) if a == action)
-			except StopIteration: return
+			try:
+				i = next(i for i, a in enumerate(save_actions) if a == action)
+			except StopIteration:
+				return
 			self.replaced.emit(i)
 
 	def begin_rename(self) -> None:
@@ -682,21 +849,27 @@ class Entry(QWidget):
 	def end_rename(self, cancel: bool) -> None:
 		assert isinstance(self.label, QLineEdit)
 		text = self.label.text().strip() if not cancel else ""
-		self.renamed.emit(Location.GLOBAL if self.is_global_button.isChecked() else Location.LOCAL, text)
+		self.renamed.emit(
+			Location.GLOBAL if self.is_global_button.isChecked() else Location.LOCAL,
+			text,
+		)
 
 	def focus(self) -> None:
 		assert isinstance(self.label, QLineEdit)
 		self.label.setFocus()
 
 	def on_text_change(self, text: str) -> bool:
-		if isinstance(self.label, QLineEdit): return False
-		if self.prefix_len != 0 and text == self.item.name[:self.prefix_len]: return True
+		if isinstance(self.label, QLineEdit):
+			return False
+		if self.prefix_len != 0 and text == self.item.name[: self.prefix_len]:
+			return True
 		self.label.setEnabled(self.item.name.startswith(text))
 		return False
 
 	# Applies stylesheets to the current widget.
 	def paintEvent(self, e: QPaintEvent) -> None:
-		if isinstance(self.label, QLineEdit): return super().paintEvent(e)
+		if isinstance(self.label, QLineEdit):
+			return super().paintEvent(e)
 		opt = QStyleOption()
 		opt.initFrom(self)
 		p = QPainter(self)
@@ -712,24 +885,32 @@ class Entry(QWidget):
 				return
 		super().mousePressEvent(event)
 
+
 def save_desc(item: rucksack.ItemData) -> str:
 	match item:
-		case rucksack.Node(kind=kind): return "&mask" if kind.is_mask() else "&layer"
-		case rucksack.Vector(is_text=is_text): return "&text" if is_text else "&vector"
-		case rucksack.LayerStyle(): return "layer &style"
+		case rucksack.Node(kind=kind):
+			return "&mask" if kind.is_mask() else "&layer"
+		case rucksack.Vector(is_text=is_text):
+			return "&text" if is_text else "&vector"
+		case rucksack.LayerStyle():
+			return "layer &style"
+
 
 class LineEditCaptureEscape(QLineEdit):
 	escape = pyqtSignal()
 	num_pressed: int = 0
+
 	def keyPressEvent(self, e: QKeyEvent):
 		self.num_pressed += 1
 		if e.key() == Qt.Key_Escape:
 			self.escape.emit()
 		else:
 			super().keyPressEvent(e)
+
 	def keyReleaseEvent(self, e: QKeyEvent):
 		self.num_pressed = max(self.num_pressed - 1, 0)
 		super().keyReleaseEvent(e)
+
 
 def unwrap[T](val: T | None) -> T:
 	assert val is not None

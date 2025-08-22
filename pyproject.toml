@@ -8,8 +8,16 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["mypy>=1.15.0"]
+dev = [
+    "mypy>=1.15.0",
+    "ruff>=0.12.10",
+]
 
 [[tool.mypy.overrides]]
 module = "krita"
 ignore_errors = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+exclude = ["krita.pyi"]

@@ -8,6 +8,7 @@ import sys
 from . import docker
 from . import open_rucksack
 
+
 class DockWidget(krita.DockWidget):
 	w: docker.Widget | None
 	kr: Krita
@@ -16,7 +17,8 @@ class DockWidget(krita.DockWidget):
 
 	def __init__(self) -> None:
 		super().__init__()
-		if (kr := Krita.instance()) is None: return
+		if (kr := Krita.instance()) is None:
+			return
 		self.kr = kr
 
 		self.setWindowTitle("Batch Manager")
@@ -50,15 +52,17 @@ class DockWidget(krita.DockWidget):
 		self.close_btn.deleteLater()
 
 	def canvasChanged(self, canvas: krita.Canvas | None) -> None:
-		if self.w is not None: self.w.canvas_changed(canvas)
+		if self.w is not None:
+			self.w.canvas_changed(canvas)
 
 	def reload(self, layout: QVBoxLayout) -> None:
-		for m in list(m for n, m in sys.modules.items() if n.startswith(f"{__name__}.")):
-			importlib.reload(m)
-		if self.w is not None: self.w.setParent(None) # type: ignore[call-overload]
+		reload_modules()
+		if self.w is not None:
+			self.w.setParent(None)  # type: ignore[call-overload]
 		self.w = None
 		self.w = docker.Widget(self.kr)
 		layout.addWidget(self.w)
+
 
 class Extension(krita.Extension):
 	kr: Krita
@@ -71,18 +75,33 @@ class Extension(krita.Extension):
 		pass
 
 	def createActions(self, window: krita.Window | None) -> None:
-		if window is None: return
-		if (action := window.createAction("open_rucksack", "Open Rucksack", "tools/scripts")) is None: return
+		if window is None:
+			return
+		if (
+			action := window.createAction(
+				"open_rucksack", "Open Rucksack", "tools/scripts"
+			)
+		) is None:
+			return
 		action.triggered.connect(self.open_rucksack)
 
 	def open_rucksack(self) -> None:
-		if dev_mode:
-			for m in list(m for n, m in sys.modules.items() if n.startswith(f"{__name__}.")):
-				importlib.reload(m)
+		reload_modules()
 		open_rucksack.run(self.kr)
 
+
+def reload_modules() -> None:
+	if not dev_mode:
+		return
+	for name, module in sys.modules.items():
+		if name.startswith(f"{__name__}."):
+			importlib.reload(module)
+
+
 if (kr := Krita.instance()) is not None:
-	dev_mode = os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_mode"))
+	dev_mode = os.path.isfile(
+		os.path.join(os.path.dirname(os.path.abspath(__file__)), "dev_mode")
+	)
 
 	pos = krita.DockWidgetFactoryBase.DockPosition.DockRight
 	kr.addDockWidgetFactory(krita.DockWidgetFactory("Batch Manager", pos, DockWidget))

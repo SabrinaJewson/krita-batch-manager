@@ -9,21 +9,36 @@ import asyncio
 
 loop = asyncio.new_event_loop()
 
+
 def runner():
 	asyncio.set_event_loop(loop)
 	loop.run_forever()
+
+
 Thread(target=runner).start()
+
 
 # Wrap any asyncio-enabled coroutine to run on the external thread.
 @dataclass
 class Wrap[T](Coroutine[Any, Any, T], Generator[Any, Any, T]):
 	f: Coroutine[Any, Any, T]
-	def __await__(self) -> Generator[Any, Any, T]: return self
-	def __next__(self) -> Self: return self
+
+	def __await__(self) -> Generator[Any, Any, T]:
+		return self
+
+	def __next__(self) -> Self:
+		return self
+
 	# wrap in a tuple since `.send(None)` is a special case
-	def send(self, value: Tuple[T]) -> Never: raise StopIteration(value[0])
-	def throw(self, value: Any, *args) -> Never: raise value
-	def close(self) -> Never: raise GeneratorExit
+	def send(self, value: Tuple[T]) -> Never:
+		raise StopIteration(value[0])
+
+	def throw(self, value: Any, *args) -> Never:
+		raise value
+
+	def close(self) -> Never:
+		raise GeneratorExit
+
 
 # Drive a `Wrap`-using coroutine on the main thread.
 class Task(QObject):
@@ -66,10 +81,13 @@ class Task(QObject):
 
 		asyncio.run_coroutine_threadsafe(wrapper(), loop)
 
+
 class TaskSet:
 	tasks: list[Task]
+
 	def __init__(self):
 		self.tasks = []
+
 	def spawn(self, task: Coroutine[Wrap[Any], Any, None]) -> None:
 		self.tasks = [t for t in self.tasks if t.state < 2]
 		self.tasks.append(Task(task))

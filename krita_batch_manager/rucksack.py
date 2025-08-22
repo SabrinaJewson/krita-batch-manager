@@ -8,6 +8,7 @@ import json
 
 from . import json_cursor
 
+
 class Rucksack:
 	path: Path
 	json_path: Path
@@ -24,21 +25,26 @@ class Rucksack:
 	def gen_layer_path(self) -> Tuple[int, Path]:
 		for i in range(1024):
 			path = self.node_path(i)
-			if path.exists(): continue
+			if path.exists():
+				continue
 			return i, path
 		raise Exception("could not find suitable layer path")
+
 
 @dataclass
 class Item:
 	name: str
 	data: ItemData
 
+
 type ItemData = Node | Vector | LayerStyle
+
 
 @dataclass
 class Node:
 	filename: int
 	kind: NodeKind
+
 
 class NodeKind(Enum):
 	LAYER = enum.auto()
@@ -55,26 +61,35 @@ class NodeKind(Enum):
 
 	def is_mask(self) -> bool:
 		match self:
-			case (NodeKind.LAYER
+			case (
+				NodeKind.LAYER
 				| NodeKind.LAYER_FILE
 				| NodeKind.LAYER_FILL
 				| NodeKind.LAYER_FILTER
 				| NodeKind.LAYER_GROUP
-				| NodeKind.LAYER_VECTOR): return False
-			case (NodeKind.MASK_COLORIZE
+				| NodeKind.LAYER_VECTOR
+			):
+				return False
+			case (
+				NodeKind.MASK_COLORIZE
 				| NodeKind.MASK_FILTER
 				| NodeKind.MASK_SELECTION
 				| NodeKind.MASK_TRANSFORM
-				| NodeKind.MASK_TRANSPARENCY): return True
+				| NodeKind.MASK_TRANSPARENCY
+			):
+				return True
+
 
 @dataclass
 class Vector:
 	svg: str
 	is_text: bool
 
+
 @dataclass
 class LayerStyle:
 	asl: str
+
 
 def read(path: Path) -> list[Item]:
 	try:
@@ -87,11 +102,17 @@ def read(path: Path) -> list[Item]:
 	except Exception as e:
 		raise Exception(f"failed to read JSON at {path}: {str(e)}")
 
+
 def write(path: Path, items: list[Item]) -> None:
-	data = { "items": [{ "name": item.name, "kind": format_item_data(item.data) } for item in items] }
+	data = {
+		"items": [
+			{"name": item.name, "kind": format_item_data(item.data)} for item in items
+		]
+	}
 	path.parent.mkdir(parents=True, exist_ok=True)
-	with open(path, 'w') as f:
+	with open(path, "w") as f:
 		json.dump(data, f)
+
 
 class ItemKind(Enum):
 	NODE = enum.auto()
@@ -99,14 +120,16 @@ class ItemKind(Enum):
 	TEXT = enum.auto()
 	LAYER_STYLE = enum.auto()
 
+
 def format_item_data(item: ItemData) -> json_cursor.Value:
 	match item:
 		case Node(filename, kind):
-			return { "tag": "NODE", "kind": item.kind.name, "filename": filename }
+			return {"tag": "NODE", "kind": item.kind.name, "filename": filename}
 		case Vector(svg, is_text):
-			return { "tag": "TEXT" if is_text else "VECTOR", "svg": svg }
+			return {"tag": "TEXT" if is_text else "VECTOR", "svg": svg}
 		case LayerStyle(asl):
-			return { "tag": "LAYER_STYLE", "asl": asl }
+			return {"tag": "LAYER_STYLE", "asl": asl}
+
 
 def parse_item(c_item: json_cursor.Any) -> Item:
 	c_item = c_item.object()

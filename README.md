@@ -77,5 +77,6 @@ Getting started:
 
 Useful commands:
 - Typechecking: `uv run mypy .`.
+- Formatting: `uv run ruff format`.
 
 License: EUPL

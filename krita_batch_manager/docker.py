@@ -1,6 +1,6 @@
 from __future__ import annotations
 from PyQt5.QtCore import *
-from PyQt5.QtGui import * # type: ignore[assignment]
+from PyQt5.QtGui import *  # type: ignore[assignment]
 from PyQt5.QtWidgets import *
 from dataclasses import dataclass
 from enum import Enum
@@ -16,6 +16,7 @@ import os
 from . import async_hack
 from . import json_cursor
 
+
 class Format(Enum):
 	PNG = enum.auto()
 	WEBP_LOSSLESS = enum.auto()
@@ -29,6 +30,7 @@ class Format(Enum):
 		elif self == Format.WEBP_LOSSY:
 			return "WebP (Lossy)"
 
+
 @dataclass
 class ExportSettings:
 	export_path: str = ""
@@ -40,7 +42,9 @@ class ExportSettings:
 	def export_opts(self) -> Tuple[str, krita.InfoObject]:
 		config = krita.InfoObject()
 		if self.format == Format.PNG:
-			config.setProperty("compression", self.png_compression if not self.oxipng else 1)
+			config.setProperty(
+				"compression", self.png_compression if not self.oxipng else 1
+			)
 			return ("png", config)
 		elif self.format == Format.WEBP_LOSSLESS:
 			# https://github.com/KDE/krita/blob/93c4f746da3a7f2c56e3110c457684ff05175024/plugins/impex/webp/kis_wdg_options_webp.cpp#L172
@@ -73,8 +77,9 @@ class ExportSettings:
 			"oxipng": self.oxipng,
 			"webp_method": self.webp_method,
 		}
-		with open(path, 'w') as f:
+		with open(path, "w") as f:
 			json.dump(data, f)
+
 
 class Widget(QWidget):
 	kr: Krita
@@ -120,8 +125,14 @@ class Widget(QWidget):
 		self.import_btn.setToolTip("Import files as .kra files")
 		refresh_btn.setToolTip("Refresh file list")
 		select_btn.setToolTip("Select folder")
-		for btn in [self.prev_btn, self.next_btn, self.import_btn, refresh_btn, select_btn]:
-			btn.setStyleSheet("margin:0px;padding:0px");
+		for btn in [
+			self.prev_btn,
+			self.next_btn,
+			self.import_btn,
+			refresh_btn,
+			select_btn,
+		]:
+			btn.setStyleSheet("margin:0px;padding:0px")
 			nav_layout.addWidget(btn)
 		layout.addLayout(nav_layout)
 
@@ -200,11 +211,15 @@ class Widget(QWidget):
 		if self.current_dir is not None:
 			try:
 				files = sorted(
-					[f for f in os.listdir(self.current_dir) if Path(f).suffix in image_formats],
-					key=lambda s: s.lower()
+					[
+						f
+						for f in os.listdir(self.current_dir)
+						if Path(f).suffix in image_formats
+					],
+					key=lambda s: s.lower(),
 				)
 			except Exception as e:
-				self.floating_message("dialog-warning", f"error reading directory: {str(e)}")
+				self.error(f"error reading directory: {str(e)}")
 				files = []
 
 			for fname in files:
@@ -221,13 +236,17 @@ class Widget(QWidget):
 		self.next_btn.setEnabled(self.active_file is not None)
 
 	def update_export_state(self) -> None:
-		valid = self.current_dir is not None and bool(self.export_path_edit.text().strip())
+		valid = self.current_dir is not None and bool(
+			self.export_path_edit.text().strip()
+		)
 		if self.export_in_progress:
 			self.export_btn.setEnabled(False)
 			self.export_btn.setText("Exporting…")
 		else:
 			self.export_btn.setEnabled(valid)
-			self.export_btn.setToolTip("Export all KRA files" if valid else "Select export directory first")
+			self.export_btn.setToolTip(
+				"Export all KRA files" if valid else "Select export directory first"
+			)
 			self.export_btn.setText("Export")
 		self.export_settings_btn.setEnabled(valid)
 		if valid:
@@ -238,12 +257,14 @@ class Widget(QWidget):
 
 	def select_dir(self) -> None:
 		path = QFileDialog.getExistingDirectory(self, "Select Directory")
-		if path: self.set_current_dir(Path(path))
+		if path:
+			self.set_current_dir(Path(path))
 
 	def show_context_menu(self, position: QPoint) -> None:
 		items = self.file_list.selectedItems()
 		file_paths: list[Path] = [item.data(Qt.UserRole) for item in items]
-		if not file_paths: return
+		if not file_paths:
+			return
 
 		menu = QMenu()
 		open_action = menu.addAction("Open")
@@ -254,14 +275,21 @@ class Widget(QWidget):
 		export_action.setEnabled(bool(self.export_path_edit.text().strip()))
 
 		action = menu.exec_(self.file_list.mapToGlobal(position))
-		if action == open_action: self.open_file(items[0])
-		elif action == delete_action: self.delete_file(file_paths)
-		elif action == rename_action: self.rename_file(file_paths[0])
-		elif action == export_action: self.export_files(file_paths, force=True)
-		elif action == distribute_action: self.distribute(file_paths)
+		if action == open_action:
+			self.open_file(items[0])
+		elif action == delete_action:
+			self.delete_file(file_paths)
+		elif action == rename_action:
+			self.rename_file(file_paths[0])
+		elif action == export_action:
+			self.export_files(file_paths, force=True)
+		elif action == distribute_action:
+			self.distribute(file_paths)
 
 	def open_file(self, item: QListWidgetItem) -> None:
-		if (win := self.kr.activeWindow()) is None: qWarning("no active window"); return
+		if (win := self.kr.activeWindow()) is None:
+			qWarning("no active window")
+			return
 		target_path = str(item.data(Qt.UserRole))
 		doc, _, _ = self.open_or_reuse(target_path)
 		try:
@@ -281,7 +309,8 @@ class Widget(QWidget):
 	def go(self, offset: int, keep_current: bool) -> None:
 		current_doc = self.kr.activeDocument()
 
-		if self.active_file is None: return
+		if self.active_file is None:
+			return
 		new = (self.file_list.row(self.active_file) + offset) % self.file_list.count()
 		item = self.file_list.item(new)
 		assert item is not None
@@ -291,13 +320,17 @@ class Widget(QWidget):
 			current_doc.close()
 
 	def import_images(self) -> None:
-		if self.current_dir is None: return
+		if self.current_dir is None:
+			return
 		current_doc = self.kr.activeDocument()
 
 		title = "Select Images to Import"
 		image_format_list = " ".join(f"*{ext}" for ext in image_formats)
-		files, _ = QFileDialog.getOpenFileNames(self, title, "", f"Images ({image_format_list})")
-		if not files: return
+		files, _ = QFileDialog.getOpenFileNames(
+			self, title, "", f"Images ({image_format_list})"
+		)
+		if not files:
+			return
 
 		options_dialog = QDialog(self)
 		options_dialog.setWindowTitle("Import Settings")
@@ -317,7 +350,9 @@ class Widget(QWidget):
 
 		copy_structure = QCheckBox()
 		if current_doc is not None:
-			layout.addRow("Copy non-background layers from current document:", copy_structure)
+			layout.addRow(
+				"Copy non-background layers from current document:", copy_structure
+			)
 
 		file_layer = QCheckBox()
 		layout.addRow("Import as file layer:", file_layer)
@@ -327,7 +362,8 @@ class Widget(QWidget):
 		buttons.rejected.connect(options_dialog.reject)
 		layout.addRow(buttons)
 
-		if options_dialog.exec_() != QDialog.Accepted: return
+		if options_dialog.exec_() != QDialog.Accepted:
+			return
 
 		imported = 0
 		for src_path in files:
@@ -337,14 +373,21 @@ class Widget(QWidget):
 
 			if dst_path.exists():
 				i = with_existing.currentIndex()
-				if i == 0: qWarning(f"skipping {dst_path} (already exists)"); continue
-				elif i == 1: pass
-				elif i == 2: add_to_dst_as_layer = True
-				else: raise Exception
+				if i == 0:
+					qWarning(f"skipping {dst_path} (already exists)")
+					continue
+				elif i == 1:
+					pass
+				elif i == 2:
+					add_to_dst_as_layer = True
+				else:
+					raise Exception
 
 			qInfo(f"exporting {src_path} to {dst_path}")
-			if (doc := self.kr.openDocument(src_path)) is None or (root_node := doc.rootNode()) is None:
-				self.floating_message("dialog-warning", f"failed to open {src_path}")
+			if (doc := self.kr.openDocument(src_path)) is None or (
+				root_node := doc.rootNode()
+			) is None:
+				self.error(f"failed to open {src_path}")
 				break
 
 			try:
@@ -353,7 +396,7 @@ class Widget(QWidget):
 				if add_to_dst_as_layer:
 					dst_doc, opened_new, should_save = self.open_or_reuse(str(dst_path))
 					if dst_doc is None or (dst_node := dst_doc.rootNode()) is None:
-						self.floating_message("dialog-warning", f"failed to open {dst_path}")
+						self.error(f"failed to open {dst_path}")
 						break
 					try:
 						dst_doc.setBatchmode(True)
@@ -361,18 +404,22 @@ class Widget(QWidget):
 						if file_layer.isChecked():
 							# We don’t actually need to open `doc` in this particular case. Seems
 							# hard to optimize that though.
-							layer = dst_doc.createFileLayer("Foreground", str(src_path), "None")
+							layer = dst_doc.createFileLayer(
+								"Foreground", str(src_path), "None"
+							)
 							dst_node.addChildNode(layer, None)
 						else:
 							for node in doc.topLevelNodes():
 								dst_node.addChildNode(node.clone(), None)
 
 						if should_save and not dst_doc.save():
-							self.floating_message("dialog-warning", f"failed to save {dst_path}")
+							self.error(f"failed to save {dst_path}")
 							break
 					finally:
-						if opened_new: dst_doc.close()
-						else: dst_doc.setBatchmode(False)
+						if opened_new:
+							dst_doc.close()
+						else:
+							dst_doc.setBatchmode(False)
 				else:
 					if file_layer.isChecked():
 						existing_nodes = doc.topLevelNodes()
@@ -380,7 +427,8 @@ class Widget(QWidget):
 						layer = doc.createFileLayer("Background", str(src_path), "None")
 						root_node.addChildNode(layer, None)
 
-						for node in existing_nodes: node.remove()
+						for node in existing_nodes:
+							node.remove()
 
 					if copy_structure.isChecked() and current_doc is not None:
 						for node in current_doc.topLevelNodes():
@@ -389,7 +437,7 @@ class Widget(QWidget):
 							root_node.addChildNode(node.clone(), None)
 
 					if not doc.saveAs(str(dst_path)):
-						self.floating_message("dialog-warning", f"failed to save to {dst_path}")
+						self.error(f"failed to save to {dst_path}")
 						break
 
 					self.update_file_list()
@@ -400,33 +448,40 @@ class Widget(QWidget):
 		self.floating_message("dialog-ok", f"successfully imported {imported} files")
 
 	def distribute(self, files: list[Path]) -> None:
-		if (src_doc := self.kr.activeDocument()) is None: return
-		if (src_node := src_doc.activeNode()) is None: return
+		if (src_doc := self.kr.activeDocument()) is None:
+			return
+		if (src_node := src_doc.activeNode()) is None:
+			return
 
 		for file in files:
-			if src_doc.fileName() == str(file): continue
+			if src_doc.fileName() == str(file):
+				continue
 
 			doc, opened_new, should_save = self.open_or_reuse(str(file))
 			if doc is None:
-				self.floating_message("dialog-warning", f"failed to open {file}")
+				self.error(f"failed to open {file}")
 				break
 
 			try:
 				doc.setBatchmode(True)
 
-				if (root_node := doc.rootNode()) is None: continue
+				if (root_node := doc.rootNode()) is None:
+					continue
 				root_node.addChildNode(src_node.clone(), None)
 
 				if should_save and not doc.save():
-					self.floating_message("dialog-warning", f"failed to save {file}")
+					self.error(f"failed to save {file}")
 					break
 			finally:
-				if opened_new: doc.close()
-				else: doc.setBatchmode(False)
+				if opened_new:
+					doc.close()
+				else:
+					doc.setBatchmode(False)
 
 	def choose_export_path(self):
 		path = QFileDialog.getExistingDirectory(self, "Select Export Directory")
-		if path: self.export_path_edit.setText(path)
+		if path:
+			self.export_path_edit.setText(path)
 		# self.update_export_state() will be called automatically
 
 	def listed_files(self) -> list[Path]:
@@ -440,7 +495,9 @@ class Widget(QWidget):
 	def export_files(self, src_paths: list[Path], force: bool = False) -> None:
 		self.tasks.spawn(self.export_files_inner(src_paths, force))
 
-	async def export_files_inner(self, src_paths: list[Path], force: bool = False) -> None:
+	async def export_files_inner(
+		self, src_paths: list[Path], force: bool = False
+	) -> None:
 		settings = self.load_export_settings()
 		ext, export_config = settings.export_opts()
 
@@ -454,16 +511,20 @@ class Widget(QWidget):
 				dst_path = Path(settings.export_path) / f"{src_path.stem}.{ext}"
 
 				try:
-					if not force and src_path.stat().st_mtime <= dst_path.stat().st_mtime:
+					if (
+						not force
+						and src_path.stat().st_mtime <= dst_path.stat().st_mtime
+					):
 						continue
-				except FileNotFoundError: pass
+				except FileNotFoundError:
+					pass
 				except Exception as e:
-					self.floating_message("dialog-warning", f"could not save to {dst_path}: {str(e)}")
+					self.error(f"could not save to {dst_path}: {str(e)}")
 					return
 
 				doc, opened_new, _ = self.open_or_reuse(str(src_path))
 				if doc is None:
-					self.floating_message("dialog-warning", f"failed to open {src_path}")
+					self.error(f"failed to open {src_path}")
 					return
 
 				try:
@@ -476,13 +537,15 @@ class Widget(QWidget):
 					await async_hack.Wrap(asyncio.sleep(0.5))
 
 					if not doc.exportImage(str(dst_path), export_config):
-						self.floating_message("dialog-warning", f"Could not export {src_path}. This is sometimes a bug in Krita, and you should just try again.")
+						self.error(
+							f"Could not export {src_path}. This is sometimes a bug in Krita, and you should just try again."
+						)
 						return
 
 					if settings.format == Format.PNG and settings.oxipng:
 						level = str(min(6, settings.png_compression - 1))
 						try:
-							compressors.append(await async_hack.Wrap(asyncio.create_subprocess_exec(
+							coro = asyncio.create_subprocess_exec(
 								"oxipng.exe" if os.name == "nt" else "oxipng",
 								"--opt",
 								level,
@@ -490,16 +553,19 @@ class Widget(QWidget):
 								"1",
 								dst_path,
 								"--alpha",
-							)))
+							)
+							compressors.append(await async_hack.Wrap(coro))
 						except Exception as e:
-							self.floating_message("dialog-warning", f"could not run oxipng: {str(e)}")
+							self.error(f"could not run oxipng: {str(e)}")
 							return
 
 					updated += 1
 					qInfo(f"exported to {dst_path}")
 				finally:
-					if opened_new: doc.close()
-					else: doc.setBatchmode(False)
+					if opened_new:
+						doc.close()
+					else:
+						doc.setBatchmode(False)
 		finally:
 			try:
 				for c in compressors:
@@ -507,17 +573,24 @@ class Widget(QWidget):
 			finally:
 				self.export_in_progress = False
 				self.update_export_state()
-		self.floating_message("dialog-ok", f"successfully exported {len(src_paths)} file(s) (updated {updated})")
+		self.floating_message(
+			"dialog-ok",
+			f"successfully exported {len(src_paths)} file(s) (updated {updated})",
+		)
 
 	def delete_file(self, file_paths: list[Path]) -> None:
-		if QMessageBox.question(
-			self,
-			"Confirm Delete",
-			f"Delete {', '.join(file_path.name for file_path in file_paths)}?",
-			QMessageBox.Yes | QMessageBox.No
-		) != QMessageBox.Yes: return
+		if (
+			QMessageBox.question(
+				self,
+				"Confirm Delete",
+				f"Delete {', '.join(file_path.name for file_path in file_paths)}?",
+				QMessageBox.Yes | QMessageBox.No,
+			)
+			!= QMessageBox.Yes
+		):
+			return
 
-		paths_to_close = { str(file_path) for file_path in file_paths }
+		paths_to_close = {str(file_path) for file_path in file_paths}
 		for doc in self.kr.documents():
 			if doc.fileName() in paths_to_close:
 				doc.close()
@@ -526,28 +599,35 @@ class Widget(QWidget):
 			try:
 				file_path.unlink()
 			except Exception as e:
-				self.floating_message("dialog-warning", f"could not delete {file_path}: {str(e)}")
+				self.error(f"could not delete {file_path}: {str(e)}")
 		self.update_file_list()
 
 	def rename_file(self, file_path: Path) -> None:
-		if self.current_dir is None: return
+		if self.current_dir is None:
+			return
 
-		new_name, ok = QInputDialog.getText(self, "Rename File", "New name:", text=file_path.stem)
-		if not ok or not new_name: return
+		new_name, ok = QInputDialog.getText(
+			self, "Rename File", "New name:", text=file_path.stem
+		)
+		if not ok or not new_name:
+			return
 		new_path = self.current_dir / f"{new_name.removesuffix('.kra')}.kra"
 		try:
 			if new_path.exists():
 				raise Exception("target already exists")
 
-			docs = [doc for doc in self.kr.documents() if doc.fileName() == str(file_path)]
+			docs = [
+				doc for doc in self.kr.documents() if doc.fileName() == str(file_path)
+			]
 
 			file_path.rename(new_path)
 
-			for doc in docs: doc.setFileName(str(new_path))
+			for doc in docs:
+				doc.setFileName(str(new_path))
 
 			self.update_file_list()
 		except Exception as e:
-			self.floating_message("dialog-warning", f"could not rename {file_path} to {new_path}: {str(e)}")
+			self.error(f"could not rename {file_path} to {new_path}: {str(e)}")
 
 	def open_settings(self) -> None:
 		settings = self.load_export_settings()
@@ -590,14 +670,16 @@ class Widget(QWidget):
 			self.save_export_settings(settings)
 
 	def save_export_settings(self, settings: ExportSettings) -> None:
-		if self.current_dir is None: return
+		if self.current_dir is None:
+			return
 		try:
 			settings.to_json(self.current_dir / "export_settings.json")
 		except Exception as e:
-			self.floating_message("dialog-warning", f"could not save settings: {str(e)}")
+			self.error(f"could not save settings: {str(e)}")
 
 	def load_export_settings(self) -> ExportSettings:
-		if self.current_dir is None: return ExportSettings()
+		if self.current_dir is None:
+			return ExportSettings()
 
 		config_path = self.current_dir / "export_settings.json"
 
@@ -610,11 +692,16 @@ class Widget(QWidget):
 			qWarning(f"loading settings from {config_path}: {str(e)}")
 			return ExportSettings()
 
+	def error(self, msg: str) -> None:
+		qWarning(msg)
+		self.floating_message("dialog-warning", msg)
+
 	# see https://scripting.krita.org/icon-library for the icons available
 	def floating_message(self, icon: str, msg: str) -> None:
 		if (win := self.kr.activeWindow()) is not None:
 			if (view := win.activeView()) is not None:
 				view.showFloatingMessage(msg, self.kr.icon(icon), 2000, 1)
+
 
 image_formats: list[str] = [
 	".avif",
@@ -631,8 +718,10 @@ image_formats: list[str] = [
 	".webp",
 ]
 
+
 class PushButtonCaptureAlt(QPushButton):
 	clicked_alt = pyqtSignal()
+
 	def mousePressEvent(self, e: QMouseEvent) -> None:
 		if bool(e.modifiers() & Qt.ShiftModifier) or e.button() == Qt.MiddleButton:
 			self.clicked_alt.emit()
