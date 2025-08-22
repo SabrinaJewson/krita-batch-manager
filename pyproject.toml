@@ -17,6 +17,10 @@ dev = [
 module = "krita"
 ignore_errors = true
 
+[tool.ruff.lint]
+extend-select = ["I"]
+exclude = ["krita.pyi"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "tab"

@@ -1,20 +1,40 @@
 from __future__ import annotations
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *  # type: ignore[assignment]
-from PyQt5.QtWidgets import *
-from dataclasses import dataclass
-from enum import Enum
-from krita import Krita
-from pathlib import Path
-from typing import Callable, cast, Tuple
+
 import asyncio
 import enum
 import json
-import krita
 import os
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 
-from . import async_hack
-from . import json_cursor
+import krita
+from krita import Krita
+from PyQt5.QtCore import QPoint, Qt, pyqtSignal, qInfo, qWarning
+from PyQt5.QtGui import QMouseEvent
+from PyQt5.QtWidgets import (
+	QAbstractItemView,
+	QCheckBox,
+	QComboBox,
+	QDialog,
+	QDialogButtonBox,
+	QFileDialog,
+	QFormLayout,
+	QHBoxLayout,
+	QInputDialog,
+	QLineEdit,
+	QListWidget,
+	QListWidgetItem,
+	QMenu,
+	QMessageBox,
+	QPushButton,
+	QSpinBox,
+	QToolButton,
+	QVBoxLayout,
+	QWidget,
+)
+
+from . import async_hack, json_cursor
 
 
 class Format(Enum):
@@ -39,7 +59,7 @@ class ExportSettings:
 	oxipng: bool = False
 	webp_method: int = 5
 
-	def export_opts(self) -> Tuple[str, krita.InfoObject]:
+	def export_opts(self) -> tuple[str, krita.InfoObject]:
 		config = krita.InfoObject()
 		if self.format == Format.PNG:
 			config.setProperty(
@@ -299,7 +319,7 @@ class Widget(QWidget):
 			win.addView(doc)
 
 	# returns (document, opened new, should save)
-	def open_or_reuse(self, path: str) -> Tuple[krita.Document | None, bool, bool]:
+	def open_or_reuse(self, path: str) -> tuple[krita.Document | None, bool, bool]:
 		try:
 			doc = next(d for d in self.kr.documents() if d.fileName() == path)
 			return (doc, False, not doc.modified())

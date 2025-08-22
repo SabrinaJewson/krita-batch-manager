@@ -1,12 +1,12 @@
-from krita import Krita
-from PyQt5.QtWidgets import *
 import importlib
-import krita
 import os
 import sys
 
-from . import docker
-from . import open_rucksack
+import krita
+from krita import Krita
+from PyQt5.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+
+from . import docker, open_rucksack
 
 
 class DockWidget(krita.DockWidget):
@@ -47,6 +47,7 @@ class DockWidget(krita.DockWidget):
 			self.setWidget(self.w)
 
 	def end_dev_mode(self) -> None:
+		global dev_mode
 		dev_mode = False
 		self.reload_btn.deleteLater()
 		self.close_btn.deleteLater()

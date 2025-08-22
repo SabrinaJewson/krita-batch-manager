@@ -1,18 +1,42 @@
 from __future__ import annotations
-from PyQt5.QtTest import QTest
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *  # type: ignore[assignment]
-from PyQt5.QtWidgets import *
-from krita import Krita
+
+import enum
+import errno
+import html
+import shutil
 from enum import Enum
 from pathlib import Path
-import json
-import enum
-from dataclasses import dataclass
-import html
+
 import krita
-import errno
-import shutil
+from krita import Krita
+from PyQt5.QtCore import QPoint, QPointF, Qt, QTimer, pyqtSignal, qInfo, qWarning
+from PyQt5.QtGui import (
+	QKeyEvent,
+	QMouseEvent,
+	QPainter,
+	QPaintEvent,
+	QPalette,
+	QTransform,
+)
+from PyQt5.QtWidgets import (
+	QApplication,
+	QDialog,
+	QDockWidget,
+	QHBoxLayout,
+	QLabel,
+	QLineEdit,
+	QMainWindow,
+	QMenu,
+	QOpenGLWidget,
+	QPushButton,
+	QStyle,
+	QStyleOption,
+	QTabWidget,
+	QTextEdit,
+	QToolButton,
+	QVBoxLayout,
+	QWidget,
+)
 
 from . import rucksack
 from .rucksack import Rucksack

@@ -1,10 +1,11 @@
 from __future__ import annotations
-from typing import Never, Iterator, Callable, Type, Tuple
-from enum import Enum
+
 import enum
-from pathlib import Path
 import json
 import unittest
+from enum import Enum
+from pathlib import Path
+from typing import Callable, Iterator, Never, Type
 
 type Value = dict[str, Value] | list[Value] | str | int | float | bool | None
 
@@ -118,7 +119,7 @@ class Str(Any):
 
 	def nonempty(self) -> str:
 		if len(self.value) == 0:
-			self.error(f"expected nonempty string")
+			self.error("expected nonempty string")
 		return self.value
 
 

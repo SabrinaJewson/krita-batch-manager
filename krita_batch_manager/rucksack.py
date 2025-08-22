@@ -1,10 +1,11 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Tuple
-from enum import Enum
-from pathlib import Path
+
 import enum
 import json
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Tuple
 
 from . import json_cursor
 
@@ -123,7 +124,7 @@ class ItemKind(Enum):
 
 def format_item_data(item: ItemData) -> json_cursor.Value:
 	match item:
-		case Node(filename, kind):
+		case Node(filename):
 			return {"tag": "NODE", "kind": item.kind.name, "filename": filename}
 		case Vector(svg, is_text):
 			return {"tag": "TEXT" if is_text else "VECTOR", "svg": svg}

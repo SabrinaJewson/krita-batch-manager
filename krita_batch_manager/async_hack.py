@@ -1,11 +1,12 @@
 # Hack to run asyncio executor in the background, performing I/O ops there while keeping all the UI
 # stuff on the main thread (Krita sometimes segfaults otherwise).
 
-from dataclasses import dataclass
-from PyQt5.QtCore import QObject, pyqtSignal, qInfo, qCritical
-from typing import Self, Coroutine, Any, Generator, Never, Callable, Tuple, Literal
-from threading import Thread
 import asyncio
+from dataclasses import dataclass
+from threading import Thread
+from typing import Any, Coroutine, Generator, Literal, Never, Self, Tuple
+
+from PyQt5.QtCore import QObject, pyqtSignal, qCritical
 
 loop = asyncio.new_event_loop()
 
