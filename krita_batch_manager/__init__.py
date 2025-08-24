@@ -94,9 +94,13 @@ class Extension(krita.Extension):
 def reload_modules() -> None:
 	if not dev_mode:
 		return
-	for name, module in sys.modules.items():
-		if name.startswith(f"{__name__}."):
-			importlib.reload(module)
+	to_reload = list(
+		module
+		for name, module in sys.modules.items()
+		if name.startswith(f"{__name__}.")
+	)
+	for module in to_reload:
+		importlib.reload(module)
 
 
 if (kr := Krita.instance()) is not None:
