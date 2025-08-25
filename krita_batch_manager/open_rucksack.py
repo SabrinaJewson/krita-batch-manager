@@ -448,9 +448,13 @@ class Driver:
 
 		# Somehow, it doesn’t work otherwise.
 		if made_new_layer:
-			QTimer.singleShot(100, lambda: self.do_select(shapes))
+			QTimer.singleShot(100, lambda: self.finish_insert_svg(shapes, is_text))
 		else:
-			self.do_select(shapes)
+			self.finish_insert_svg(shapes, is_text)
+
+	def finish_insert_svg(self, shapes: list[krita.Shape], is_text: bool) -> None:
+		for shape in shapes:
+			shape.select()
 
 		if is_text:
 			# Open the “Edit Text” popup.
@@ -470,10 +474,6 @@ class Driver:
 			next(
 				a for a in edit_menu.actions() if a.objectName() == "edit_select_all"
 			).trigger()
-
-	def do_select(self, shapes: list[krita.Shape]) -> None:
-		for shape in shapes:
-			shape.select()
 
 	def error(self, msg: str) -> None:
 		qWarning(msg)
