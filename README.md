@@ -9,6 +9,10 @@ Supports:
 
 1. Go to Tools → Scripts → Import Python Plugin from Web.
 1. Paste in the URL `https://github.com/SabrinaJewson/krita-batch-manager/archive/refs/heads/main.zip`.
+1. Go to Settings → Configure Krita → Python Plugin Manager and check “Batch Manager”.
+	(If it’s greyed out in the menu,
+	copy the full error message that you get when you click on it
+	and [open an issue](https://github.com/SabrinaJewson/krita-batch-manager/issues/new).)
 1. Restart Krita.
 1. Go to Settings → Dockers, and you should be able to check “Batch Manager”.
 
