@@ -580,7 +580,10 @@ class Widget(QWidget):
 							return
 
 					updated += 1
-					qInfo(f"exported to {dst_path}")
+					try:
+						qInfo(f"exported to {dst_path}")
+					except UnicodeEncodeError:
+						pass
 				finally:
 					if opened_new:
 						doc.close()
